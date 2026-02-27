@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 export default function VPPPage() {
   const {
-    vppEnabled, totalDevices, solarGeneration, loadDemand, agentClusters,
+    vppEnabled, devices, solarGeneration, loadDemand, agentClusters,
     vppCapacityHistory, vppClusterLog, capacityReserved, responseThreshold,
     initializeSystemData
   } = useGridStore()
@@ -21,14 +21,14 @@ export default function VPPPage() {
     initializeSystemData()
   }, [initializeSystemData])
 
-  const totalCapacityMW = agentClusters.reduce((s, c) => s + c.devices * 0.8, 0)
+  const totalCapacityMW = agentClusters.reduce((s, c) => s + c.count * 0.8, 0)
   const activeAssets = agentClusters.filter(c => c.status === 'active').length
   const v2gContribution = solarGeneration * 0.12
 
   // Per-cluster contribution data for bar chart
   const clusterContrib = agentClusters.map(c => ({
     name: c.name.replace('Cluster-', 'C'),
-    contribution: +(c.devices * 0.8 * (c.responseRate / 100)).toFixed(1),
+    contribution: +(c.count * 0.8 * (c.response / 100)).toFixed(1),
     status: c.status
   }))
 
@@ -58,7 +58,7 @@ export default function VPPPage() {
               <CardTitle className="text-3xl font-headline font-bold text-primary">{totalCapacityMW.toFixed(1)}<span className="text-sm text-muted-foreground ml-1">MW</span></CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-[10px] text-muted-foreground">{totalDevices} assets enrolled</div>
+              <div className="text-[10px] text-muted-foreground">{devices.length} assets enrolled</div>
             </CardContent>
           </Card>
           <Card className="bg-card border-border">
@@ -166,7 +166,7 @@ export default function VPPPage() {
                             {entry.action.toUpperCase()}
                           </Badge>
                         </div>
-                        <div className="text-[10px] text-muted-foreground">{entry.time} — {entry.devices} devices</div>
+                        <div className="text-[10px] text-muted-foreground">{entry.time} — {entry.cluster}</div>
                       </div>
                     </div>
                   ))}
@@ -197,19 +197,19 @@ export default function VPPPage() {
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
                     <div>
                       <div className="text-muted-foreground">Devices</div>
-                      <div className="font-mono font-bold">{cluster.devices}</div>
+                      <div className="font-mono font-bold">{cluster.count}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Response</div>
-                      <div className="font-mono font-bold">{cluster.responseRate.toFixed(0)}%</div>
+                      <div className="font-mono font-bold">{cluster.response.toFixed(0)}%</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Capacity</div>
-                      <div className="font-mono font-bold">{(cluster.devices * 0.8).toFixed(1)} MW</div>
+                      <div className="font-mono font-bold">{(cluster.count * 0.8).toFixed(1)} MW</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Contrib.</div>
-                      <div className="font-mono font-bold">{(cluster.devices * 0.8 * cluster.responseRate / 100).toFixed(1)} MW</div>
+                      <div className="font-mono font-bold">{(cluster.count * 0.8 * cluster.response / 100).toFixed(1)} MW</div>
                     </div>
                   </div>
                 </div>

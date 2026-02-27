@@ -3,7 +3,7 @@
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Settings2, Save, RotateCcw, Shield, Zap, CloudSun, Database, Info } from "lucide-react"
+import { Settings2, Save, RotateCcw, Shield, Zap, CloudSun, Database, Info, Monitor } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -12,11 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/hooks/use-toast"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function ConfigPage() {
-  const { 
-    responseThreshold, 
-    capacityReserved, 
+  const {
+    responseThreshold,
+    capacityReserved,
     criticalWarningLevel,
     detectionSensitivity,
     deceptiveSignalInjection,
@@ -27,11 +28,21 @@ export default function ConfigPage() {
     marlLearningRate,
     marlDiscountFactor,
     dataSources,
-    setVPPConfig 
+    systemMode,
+    setSystemMode,
+    resetDefaults,
+    setVPPConfig,
+    saveSnapshot,
   } = useGridStore()
 
   const handleSave = () => {
-    toast({ title: "Configuration Saved", description: "System parameters updated successfully." })
+    saveSnapshot()
+    toast({ title: "Configuration Saved", description: "System parameters persisted to database." })
+  }
+
+  const handleReset = () => {
+    resetDefaults()
+    toast({ title: "Defaults Restored", description: "All configuration parameters reset to factory defaults." })
   }
 
   return (
@@ -43,16 +54,43 @@ export default function ConfigPage() {
             <p className="text-muted-foreground text-sm">Fine-tune MARL hyperparameters, alert thresholds, and data source integrations.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
-              <RotateCcw className="h-4 w-4" />
+            <Button variant="outline" size="sm" className="gap-2 border-red-500/20 text-red-400 hover:text-red-300" onClick={handleReset} suppressHydrationWarning>
+              <RotateCcw className="h-3.5 w-3.5" />
               Reset Defaults
             </Button>
-            <Button size="sm" className="gap-2 bg-primary text-white font-bold h-8 text-[10px] uppercase" onClick={handleSave}>
-              <Save className="h-4 w-4" />
-              Apply Changes
+            <Button size="sm" className="gap-2 bg-primary text-white font-bold h-8 text-[10px] uppercase" onClick={handleSave} suppressHydrationWarning>
+              <Save className="h-3.5 w-3.5" />
+              Apply & Save
             </Button>
           </div>
         </div>
+
+        {/* System Mode Toggle */}
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <Monitor className="h-4 w-4 text-primary" />
+                System Operation Mode
+              </CardTitle>
+              <CardDescription className="text-xs mt-1">Controls data source and tick engine behavior</CardDescription>
+            </div>
+            <Tabs value={systemMode} onValueChange={(v) => setSystemMode(v as 'live' | 'simulation' | 'demo')}>
+              <TabsList>
+                <TabsTrigger value="live" className="text-xs">Live</TabsTrigger>
+                <TabsTrigger value="simulation" className="text-xs">Simulation</TabsTrigger>
+                <TabsTrigger value="demo" className="text-xs">Demo</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[10px] text-muted-foreground">
+              {systemMode === 'live' && 'Connected to production grid feed. All actions affect real systems.'}
+              {systemMode === 'simulation' && 'Using simulated data generators. Safe for testing scenarios.'}
+              {systemMode === 'demo' && 'Pre-loaded demo data with accelerated tick rate for presentations.'}
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="bg-card border-border">
@@ -68,13 +106,7 @@ export default function ConfigPage() {
                   <Label className="text-xs font-bold uppercase">Frequency Response Threshold (Hz)</Label>
                   <span className="text-xs font-mono font-bold text-primary">{responseThreshold.toFixed(2)}</span>
                 </div>
-                <Slider 
-                  value={[responseThreshold]} 
-                  min={0.01} 
-                  max={0.20} 
-                  step={0.01} 
-                  onValueChange={([v]) => setVPPConfig({ responseThreshold: v })}
-                />
+                <Slider value={[responseThreshold]} min={0.01} max={0.20} step={0.01} onValueChange={([v]) => setVPPConfig({ responseThreshold: v })} />
                 <p className="text-[10px] text-muted-foreground italic">Minimum Hz deviation to trigger automated MARL intervention.</p>
               </div>
 
@@ -91,13 +123,7 @@ export default function ConfigPage() {
                   <Label className="text-xs font-bold uppercase">VPP Capacity Reserve (%)</Label>
                   <span className="text-xs font-mono font-bold text-primary">{capacityReserved}%</span>
                 </div>
-                <Slider 
-                  value={[capacityReserved]} 
-                  min={5} 
-                  max={40} 
-                  step={1} 
-                  onValueChange={([v]) => setVPPConfig({ capacityReserved: v })}
-                />
+                <Slider value={[capacityReserved]} min={5} max={40} step={1} onValueChange={([v]) => setVPPConfig({ capacityReserved: v })} />
                 <p className="text-[10px] text-muted-foreground italic">Percentage of storage buffer reserved exclusively for frequency support.</p>
               </div>
             </CardContent>
@@ -138,7 +164,7 @@ export default function ConfigPage() {
 
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label className="text-xs font-bold uppercase">Autonomous escalation</Label>
+                  <Label className="text-xs font-bold uppercase">Autonomous Escalation</Label>
                   <p className="text-[10px] text-muted-foreground italic">Allow system to trigger high-defense mode without operator approval.</p>
                 </div>
                 <Switch checked={autonomousEscalation} onCheckedChange={(v) => setVPPConfig({ autonomousEscalation: v })} />
@@ -187,7 +213,7 @@ export default function ConfigPage() {
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label className="text-xs font-bold uppercase">Primary Grid Feed</Label>
-                <Input placeholder="https://api.ukgrid.data/live" className="h-9 text-xs bg-muted/20 border-border" value={primaryGridFeed} onChange={(e) => setVPPConfig({ primaryGridFeed: e.target.value })} />
+                <Input placeholder="https://api.ukgrid.data/live" className="h-9 text-xs bg-muted/20 border-border" value={primaryGridFeed} onChange={(e) => setVPPConfig({ primaryGridFeed: e.target.value })} suppressHydrationWarning />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {dataSources.map((src, i) => (
