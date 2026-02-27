@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
@@ -19,17 +19,10 @@ import {
 } from "recharts"
 
 export default function DefensePage() {
-  const { attackStatus, triggerAttack, phaseCoherence, initializeSystemData } = useGridStore()
-  const [coherenceData, setCoherenceData] = useState<{ time: number; value: number; attack: number }[]>([])
+  const { attackStatus, triggerAttack, phaseCoherence, attackIntensity, coherenceData, defenseLog, deceptiveSignalInjection, initializeSystemData } = useGridStore()
 
   useEffect(() => {
     initializeSystemData()
-    const data = Array.from({ length: 20 }, (_, i) => ({
-      time: i,
-      value: Math.random() * 0.2 + 0.1,
-      attack: i > 12 ? Math.random() * 0.6 + 0.3 : 0
-    }))
-    setCoherenceData(data)
   }, [initializeSystemData])
 
   return (
@@ -110,7 +103,7 @@ export default function DefensePage() {
             </CardHeader>
             <CardContent>
               <Badge variant="outline" className={`text-[8px] ${attackStatus !== 'none' ? 'border-accent text-accent' : 'text-muted-foreground'}`}>
-                DECEPTIVE SIGNAL INJECTION {attackStatus !== 'none' ? 'ON' : 'OFF'}
+                DECEPTIVE SIGNAL INJECTION {deceptiveSignalInjection && attackStatus !== 'none' ? 'ON' : 'OFF'}
               </Badge>
             </CardContent>
           </Card>
@@ -119,7 +112,7 @@ export default function DefensePage() {
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Attack Intensity</CardDescription>
               <CardTitle className="text-3xl font-headline font-bold">
-                {attackStatus === 'none' ? '0.0' : '8.4'}<span className="text-sm text-muted-foreground ml-1">MW/min</span>
+                {attackIntensity.toFixed(1)}<span className="text-sm text-muted-foreground ml-1">MW/min</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -175,12 +168,9 @@ export default function DefensePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                { time: "14:22:10", action: "Detected phase alignment", target: "Cluster B", severity: "warning" },
-                { time: "14:22:15", action: "Injected noise signal", target: "Sector 4", severity: "info" },
-                { time: "14:22:30", action: "Randomized agent rewards", target: "Global", severity: "info" },
-                { time: "14:23:05", action: "Frequency drift compensated", target: "VPP-8", severity: "info" },
-              ].map((log, i) => (
+              {defenseLog.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-8">No defense actions logged. Trigger an attack simulation to generate entries.</div>
+              ) : defenseLog.slice(0, 8).map((log, i) => (
                 <div key={i} className="flex gap-3 p-3 rounded-lg bg-muted/20 border border-border">
                   <div className={`h-2 w-2 rounded-full mt-1 shrink-0 ${log.severity === 'warning' ? 'bg-amber-500' : 'bg-primary'}`} />
                   <div>

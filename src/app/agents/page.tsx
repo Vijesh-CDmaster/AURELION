@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 
 export default function AgentsPage() {
-  const { activeAgents, agentClusters, initializeSystemData } = useGridStore()
+  const { activeAgents, agentClusters, avgAgentResponse, virtualInertia, rewardWeightStatus, systemCapacity, initializeSystemData } = useGridStore()
   const [dots, setDots] = useState<{ top: number; left: number; opacity: number; isRed: boolean }[]>([])
 
   useEffect(() => {
@@ -24,13 +24,15 @@ export default function AgentsPage() {
     setDots(newDots)
   }, [initializeSystemData])
 
+  const prevResponse = avgAgentResponse > 0 ? ((avgAgentResponse - 2) / avgAgentResponse * 100 - 100).toFixed(0) : '0';
+
   return (
     <Shell>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-headline font-bold text-foreground">MARL Agent Control</h2>
-            <p className="text-muted-foreground text-sm">Monitoring 10,000+ Multi-Agent Reinforcement Learning (MARL) edge agents.</p>
+            <p className="text-muted-foreground text-sm">Monitoring {activeAgents.toLocaleString()} Multi-Agent Reinforcement Learning (MARL) edge agents.</p>
           </div>
           <div className="relative w-full md:w-64">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -45,20 +47,20 @@ export default function AgentsPage() {
               <CardTitle className="text-3xl font-headline font-bold text-primary">{activeAgents.toLocaleString()}</CardTitle>
             </CardHeader>
             <CardContent>
-              <Progress value={94} className="h-1.5" />
-              <p className="text-[10px] text-muted-foreground mt-2">94% System Capacity Engaged</p>
+              <Progress value={systemCapacity} className="h-1.5" />
+              <p className="text-[10px] text-muted-foreground mt-2">{systemCapacity.toFixed(0)}% System Capacity Engaged</p>
             </CardContent>
           </Card>
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Avg Response</CardDescription>
-              <CardTitle className="text-3xl font-headline font-bold">45ms</CardTitle>
+              <CardTitle className="text-3xl font-headline font-bold">{avgAgentResponse.toFixed(0)}ms</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-1 text-[10px] text-emerald-400">
                 <TrendingUp className="h-3 w-3" />
-                <span>+4% from last hour</span>
+                <span>{prevResponse}% from last hour</span>
               </div>
             </CardContent>
           </Card>
@@ -66,7 +68,7 @@ export default function AgentsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Virtual Inertia</CardDescription>
-              <CardTitle className="text-3xl font-headline font-bold text-accent">0.85 MW·s</CardTitle>
+              <CardTitle className="text-3xl font-headline font-bold text-accent">{virtualInertia.toFixed(2)} MW·s</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-[10px] text-muted-foreground">Synthetic stabilizing mass</div>
@@ -76,10 +78,12 @@ export default function AgentsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Reward Weights</CardDescription>
-              <CardTitle className="text-3xl font-headline font-bold">MUTATED</CardTitle>
+              <CardTitle className="text-3xl font-headline font-bold">{rewardWeightStatus}</CardTitle>
             </CardHeader>
             <CardContent>
-              <Badge variant="outline" className="text-[8px] border-accent/30 text-accent">ADAPTIVE MODE</Badge>
+              <Badge variant="outline" className="text-[8px] border-accent/30 text-accent">
+                {rewardWeightStatus === 'MUTATED' ? 'ADAPTIVE MODE' : 'BASELINE MODE'}
+              </Badge>
             </CardContent>
           </Card>
         </div>

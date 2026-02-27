@@ -11,23 +11,18 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
 export function GridDashboard() {
-  const { addHistoryPoint, frequency, status, attackStatus, initializeSystemData } = useGridStore()
+  const { status, attackStatus, phaseCoherence, nodesAtRisk, deceptiveSignalInjection, forecastAlert, initializeSystemData, tick } = useGridStore()
 
-  // Initialize history on client mount
+  // Initialize on mount
   React.useEffect(() => {
     initializeSystemData()
   }, [initializeSystemData])
 
-  // Simulate real-time data drift
+  // Real-time tick every 2 seconds — drives ALL dynamic data
   React.useEffect(() => {
-    const interval = setInterval(() => {
-      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      const drift = (Math.random() * 0.02 - 0.01)
-      const newValue = frequency === 50 ? 50 + drift : frequency + drift
-      addHistoryPoint({ time, value: newValue })
-    }, 2000)
+    const interval = setInterval(() => tick(), 2000)
     return () => clearInterval(interval)
-  }, [addHistoryPoint, frequency])
+  }, [tick])
 
   return (
     <div className="space-y-6">
@@ -46,10 +41,17 @@ export function GridDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
-                <div className="text-xs font-bold mb-1">Potential Shading Event</div>
-                <div className="text-[10px] text-muted-foreground">Transformer T-42 sector in 12 mins. Probability: 88%.</div>
-              </div>
+              {forecastAlert ? (
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
+                  <div className="text-xs font-bold mb-1">{forecastAlert.event}</div>
+                  <div className="text-[10px] text-muted-foreground">{forecastAlert.detail}</div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-muted/20 border border-border mb-4">
+                  <div className="text-xs font-bold mb-1">No Active Alerts</div>
+                  <div className="text-[10px] text-muted-foreground">All sectors nominal.</div>
+                </div>
+              )}
               <Button asChild variant="outline" size="sm" className="w-full text-[10px] font-bold uppercase tracking-widest" suppressHydrationWarning>
                 <Link href="/forecast">
                   View Sky-Cam Feed
@@ -67,7 +69,7 @@ export function GridDashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-[11px] text-muted-foreground italic leading-relaxed">
-                "System health is currently {status.toUpperCase()}. MARL agents are synchronized. No adversarial phase alignment detected."
+                &quot;System health is currently {status.toUpperCase()}. MARL agents are synchronized. {attackStatus !== 'none' ? `Adversarial phase alignment detected — coherence at ${(phaseCoherence * 100).toFixed(1)}%.` : 'No adversarial phase alignment detected.'}&quot;
               </p>
               <Button asChild className="w-full bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity" suppressHydrationWarning>
                 <Link href="/assistant">
@@ -98,7 +100,7 @@ export function GridDashboard() {
                     {attackStatus === 'none' ? 'NO ATTACK' : 'MITIGATING'}
                   </div>
                   <div className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
-                    Phase Coherence: {attackStatus === 'none' ? '0.12' : '0.85'}
+                    Phase Coherence: {(phaseCoherence * 100).toFixed(1)}%
                   </div>
                 </div>
                 <div className={`h-12 w-12 rounded-full flex items-center justify-center ${attackStatus === 'none' ? 'bg-muted/50' : 'bg-red-500/20 animate-pulse'}`}>
@@ -108,11 +110,11 @@ export function GridDashboard() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3 rounded-lg border border-border bg-muted/20">
                   <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Nodes at Risk</div>
-                  <div className="text-sm font-bold">{attackStatus === 'none' ? '0' : '1,240'}</div>
+                  <div className="text-sm font-bold">{nodesAtRisk.toLocaleString()}</div>
                 </div>
                 <div className="p-3 rounded-lg border border-border bg-muted/20">
                   <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Defense Level</div>
-                  <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : 'DECEPTIVE ON'}</div>
+                  <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : deceptiveSignalInjection ? 'DECEPTIVE ON' : 'ACTIVE'}</div>
                 </div>
               </div>
               <Button asChild variant="outline" size="sm" className="w-full bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors" suppressHydrationWarning>

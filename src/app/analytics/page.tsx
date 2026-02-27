@@ -19,11 +19,18 @@ import {
 } from "recharts"
 
 export default function AnalyticsPage() {
-  const { energySaved, performanceData, initializeSystemData } = useGridStore()
+  const { energySaved, performanceData, latency, avgDetectionTime, falsePositiveRate, recoveryEfficiency, attacksMitigated, initializeSystemData } = useGridStore()
 
   useEffect(() => {
     initializeSystemData()
   }, [initializeSystemData])
+
+  // Compute avg stability from performance data
+  const avgStability = performanceData.length > 0
+    ? (performanceData.reduce((s, d) => s + d.stability, 0) / performanceData.length)
+    : 0;
+  const totalSavings = performanceData.reduce((s, d) => s + d.savings, 0);
+  const estimatedValue = `+$${Math.round(totalSavings * 0.12).toLocaleString()}`;
 
   return (
     <Shell>
@@ -49,7 +56,7 @@ export default function AnalyticsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Avg stability</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black text-emerald-400">97.8%</CardTitle>
+              <CardTitle className="text-3xl font-headline font-black text-emerald-400">{avgStability.toFixed(1)}%</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-[10px] text-muted-foreground">Normal operation hours</div>
@@ -59,17 +66,17 @@ export default function AnalyticsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Energy Saved</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black text-primary">{energySaved} <span className="text-sm">kWh</span></CardTitle>
+              <CardTitle className="text-3xl font-headline font-black text-primary">{Math.round(energySaved).toLocaleString()} <span className="text-sm">kWh</span></CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-[10px] text-emerald-400 font-bold">+$1,420 estimated value</div>
+              <div className="text-[10px] text-emerald-400 font-bold">{estimatedValue} estimated value</div>
             </CardContent>
           </Card>
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Attacks Mitigated</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black text-accent">14</CardTitle>
+              <CardTitle className="text-3xl font-headline font-black text-accent">{attacksMitigated}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-[10px] text-muted-foreground">Last 30 days</div>
@@ -79,7 +86,7 @@ export default function AnalyticsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Response Latency</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black text-blue-400">42.5ms</CardTitle>
+              <CardTitle className="text-3xl font-headline font-black text-blue-400">{latency.toFixed(1)}ms</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-[10px] text-muted-foreground">System-wide average</div>
@@ -144,18 +151,18 @@ export default function AnalyticsPage() {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-2">
                 <div className="text-[10px] font-bold uppercase text-muted-foreground">Avg Attack Detection Time</div>
-                <div className="text-2xl font-headline font-black">1.8s</div>
-                <Progress value={85} className="h-1 bg-emerald-500/10" />
+                <div className="text-2xl font-headline font-black">{avgDetectionTime.toFixed(1)}s</div>
+                <Progress value={Math.min(100, (1 / avgDetectionTime) * 100)} className="h-1 bg-emerald-500/10" />
               </div>
               <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-2">
                 <div className="text-[10px] font-bold uppercase text-muted-foreground">False Positive Rate</div>
-                <div className="text-2xl font-headline font-black text-emerald-400">0.04%</div>
-                <Progress value={5} className="h-1 bg-emerald-500/10" />
+                <div className="text-2xl font-headline font-black text-emerald-400">{(falsePositiveRate * 100).toFixed(2)}%</div>
+                <Progress value={falsePositiveRate * 500} className="h-1 bg-emerald-500/10" />
               </div>
               <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-2">
                 <div className="text-[10px] font-bold uppercase text-muted-foreground">Recovery efficiency</div>
-                <div className="text-2xl font-headline font-black">94.2%</div>
-                <Progress value={94} className="h-1 bg-emerald-500/10" />
+                <div className="text-2xl font-headline font-black">{recoveryEfficiency.toFixed(1)}%</div>
+                <Progress value={recoveryEfficiency} className="h-1 bg-emerald-500/10" />
               </div>
             </div>
           </CardContent>

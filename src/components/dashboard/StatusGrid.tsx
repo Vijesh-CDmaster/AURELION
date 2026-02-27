@@ -6,7 +6,7 @@ import { TrendingUp, Clock, Zap, Activity, Users, Shield, CloudSun } from "lucid
 import { cn } from "@/lib/utils"
 
 export function StatusGrid() {
-  const { frequency, latency, vppResponse, status, activeAgents, attackStatus } = useGridStore()
+  const { frequency, latency, vppResponse, status, activeAgents, attackStatus, agentSyncRate } = useGridStore()
 
   const metrics = [
     {
@@ -19,7 +19,7 @@ export function StatusGrid() {
     {
       label: "Active Agents",
       value: activeAgents.toLocaleString(),
-      sub: "Sync: 99.8% Core",
+      sub: `Sync: ${agentSyncRate.toFixed(1)}% Core`,
       icon: Users,
       color: "text-blue-400",
     },
