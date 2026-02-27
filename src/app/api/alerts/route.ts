@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
     // Bulk upsert by alertId
     const ops = alerts.map((a) => ({
       updateOne: {
-        filter: { alertId: a.alertId },
-        update: { $set: a },
+        filter: { alertId: a.alertId as string },
+        update: { $set: a } as any,
         upsert: true,
       },
     }));

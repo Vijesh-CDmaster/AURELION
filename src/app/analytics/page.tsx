@@ -73,7 +73,7 @@ export default function AnalyticsPage() {
     ]
     const blob = new Blob([lines.join("\n")], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement("a"); a.href = url; a.download = "analytics-report.txt"; a.click()
+    const  a = document.createElement("a"); a.href = url; a.download = "analytics-report.txt"; a.click()
     URL.revokeObjectURL(url)
     toast({ title: "Report Exported", description: "Analytics report downloaded." })
   }, [timeRange, avgStability, energySaved, attacksMitigated, latency, avgDetectionTime, falsePositiveRate, recoveryEfficiency, filteredPerf])
