@@ -1,5 +1,44 @@
 import { create } from 'zustand';
 
+// ─── DB sync helpers (fire-and-forget from client) ────────────────────────
+const api = (path: string) => `/api/grid/${path}`;
+
+async function dbGet<T = any>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(api(path));
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+async function dbPost<T = any>(path: string, body: any): Promise<T | null> {
+  try {
+    const res = await fetch(api(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+async function dbPut<T = any>(path: string, body: any): Promise<T | null> {
+  try {
+    const res = await fetch(api(path), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+// Snapshot counter — save a snapshot every N ticks (~every 30s at 2s interval)
+let tickCounter = 0;
+const SNAPSHOT_INTERVAL = 15;
+
 export type AttackStatus = 'none' | 'detected' | 'under-defense';
 export type GridStatus = 'stable' | 'warning' | 'critical';
 export type DetectionSensitivity = 'low' | 'medium' | 'high';
@@ -186,6 +225,11 @@ export interface GridState {
   runSimulation: () => void;
   completeSimulation: () => void;
   addDefenseLogEntry: (entry: DefenseLogEntry) => void;
+
+  // DB sync
+  dbReady: boolean;
+  loadFromDB: () => Promise<void>;
+  saveSnapshot: () => void;
 }
 
 // Helper: generate random float in range
@@ -266,7 +310,15 @@ export const useGridStore = create<GridState>((set, get) => ({
 
   alerts: [],
 
-  initializeSystemData: () => set((state) => {
+  // DB sync
+  dbReady: false,
+
+  initializeSystemData: () => {
+    const state = get();
+    if (state.frequencyHistory.length > 0) return;
+
+    // Generate local data first (synchronous), then overlay DB data
+    set((state) => {
     if (state.frequencyHistory.length > 0) return state;
 
     const now = new Date();
@@ -442,10 +494,22 @@ export const useGridStore = create<GridState>((set, get) => ({
       primaryGridFeed: 'https://api.aura-sentinel.io/v1/feed',
       dfdt: rand(-0.005, 0.005),
     };
-  }),
+  });
+
+    // Load persistent data from MongoDB (async, overlays config/devices/clusters/simulations)
+    get().loadFromDB();
+  },
 
   // Called every tick (~2s) to drift all dynamic values in real-time
-  tick: () => set((state) => {
+  tick: () => {
+    // Periodic DB snapshot
+    tickCounter++;
+    if (tickCounter >= SNAPSHOT_INTERVAL) {
+      tickCounter = 0;
+      get().saveSnapshot();
+    }
+
+    set((state) => {
     if (state.frequencyHistory.length === 0) return state;
 
     const now = ts();
@@ -600,7 +664,8 @@ export const useGridStore = create<GridState>((set, get) => ({
       assetsReachable: newReachable,
       forecastAlert: newForecastAlert,
     };
-  }),
+  });
+  },
 
   updateFrequency: (val) => set((state) => {
     const dev = Math.abs(50 - val);
@@ -615,9 +680,17 @@ export const useGridStore = create<GridState>((set, get) => ({
     };
   }),
 
-  toggleVPP: () => set((state) => ({ vppEnabled: !state.vppEnabled })),
+  toggleVPP: () => set((state) => {
+    const newVal = !state.vppEnabled;
+    dbPut('config', { vppEnabled: newVal });
+    return { vppEnabled: newVal };
+  }),
 
-  setVPPConfig: (config) => set((state) => ({ ...state, ...config })),
+  setVPPConfig: (config) => {
+    set((state) => ({ ...state, ...config }));
+    // Persist config to MongoDB
+    dbPut('config', config);
+  },
 
   addHistoryPoint: (point) => set((state) => ({
     frequencyHistory: [...state.frequencyHistory.slice(-59), point],
@@ -640,13 +713,25 @@ export const useGridStore = create<GridState>((set, get) => ({
     };
   }),
 
-  addAlert: (alert) => set((state) => ({
-    alerts: [{ ...alert, id: Math.random().toString(36).substr(2, 9) }, ...state.alerts].slice(0, 50),
-  })),
+  addAlert: (alert) => set((state) => {
+    const newAlert = { ...alert, id: Math.random().toString(36).substr(2, 9) };
+    // Persist to MongoDB
+    dbPost('alerts', {
+      alertId: newAlert.id,
+      time: newAlert.time,
+      type: newAlert.type,
+      severity: newAlert.severity,
+      message: newAlert.message,
+      status: newAlert.status,
+    });
+    return { alerts: [newAlert, ...state.alerts].slice(0, 50) };
+  }),
 
-  resolveAlert: (id) => set((state) => ({
-    alerts: state.alerts.map(a => a.id === id ? { ...a, status: 'resolved' } : a),
-  })),
+  resolveAlert: (id) => set((state) => {
+    // Persist to MongoDB
+    dbPut('alerts', { alertId: id });
+    return { alerts: state.alerts.map(a => a.id === id ? { ...a, status: 'resolved' as const } : a) };
+  }),
 
   setSimulationParams: (params) => set((state) => ({
     simulationParams: { ...state.simulationParams, ...params },
@@ -682,13 +767,149 @@ export const useGridStore = create<GridState>((set, get) => ({
       outcome: stability > 85 ? 'SUCCESS' : 'WARNING',
     };
 
+    // Persist to MongoDB
+    dbPost('simulations', {
+      simId: newRecord.id,
+      scenario: newRecord.scenario,
+      date: newRecord.date,
+      stability: newRecord.stability,
+      outcome: newRecord.outcome,
+      params: state.simulationParams,
+      results: {
+        maxDeviation: results.maxDeviation,
+        recoveryTime: results.recoveryTime,
+        energyCurtailed: results.energyCurtailed,
+      },
+    });
+
     return {
       simulationResults: null,
       simulationHistory: [newRecord, ...state.simulationHistory].slice(0, 20),
     };
   }),
 
-  addDefenseLogEntry: (entry) => set((state) => ({
-    defenseLog: [entry, ...state.defenseLog].slice(0, 20),
-  })),
+  addDefenseLogEntry: (entry) => set((state) => {
+    // Persist to MongoDB
+    dbPost('defense-log', entry);
+    return { defenseLog: [entry, ...state.defenseLog].slice(0, 20) };
+  }),
+
+  // ─── DB Sync Actions ──────────────────────────────────────────────────
+
+  loadFromDB: async () => {
+    try {
+      // Seed DB if empty (fire-and-forget, idempotent)
+      await dbPost('seed', {});
+
+      // Load persistent data in parallel
+      const [config, devices, clusters, simulations, alerts, defenseLogs] = await Promise.all([
+        dbGet<any>('config'),
+        dbGet<any[]>('devices'),
+        dbGet<any[]>('clusters'),
+        dbGet<any[]>('simulations'),
+        dbGet<any[]>('alerts'),
+        dbGet<any[]>('defense-log'),
+      ]);
+
+      const updates: Partial<GridState> = { dbReady: true };
+
+      if (config) {
+        updates.vppEnabled = config.vppEnabled ?? true;
+        updates.bidirectionalCharging = config.bidirectionalCharging ?? true;
+        updates.responseThreshold = config.responseThreshold ?? 0.05;
+        updates.capacityReserved = config.capacityReserved ?? 15;
+        updates.criticalWarningLevel = config.criticalWarningLevel ?? 0.25;
+        updates.detectionSensitivity = config.detectionSensitivity ?? 'medium';
+        updates.deceptiveSignalInjection = config.deceptiveSignalInjection ?? true;
+        updates.autonomousEscalation = config.autonomousEscalation ?? true;
+        updates.forecastHorizon = config.forecastHorizon ?? '30s';
+        updates.skyCamEnabled = config.skyCamEnabled ?? true;
+        updates.primaryGridFeed = config.primaryGridFeed ?? '';
+        updates.marlLearningRate = config.marlLearningRate ?? 0.001;
+        updates.marlDiscountFactor = config.marlDiscountFactor ?? 0.95;
+        if (config.dataSources?.length) updates.dataSources = config.dataSources;
+      }
+
+      if (devices?.length) {
+        updates.devices = devices.map((d: any) => ({
+          id: d.deviceId,
+          type: d.type,
+          status: d.status,
+          load: d.load,
+          cluster: d.cluster,
+          latency: d.latency,
+        }));
+      }
+
+      if (clusters?.length) {
+        updates.agentClusters = clusters.map((c: any) => ({
+          name: c.name,
+          count: c.count,
+          response: c.response,
+          status: c.status,
+        }));
+        updates.activeAgents = clusters.reduce((s: number, c: any) => s + c.count, 0);
+      }
+
+      if (simulations?.length) {
+        updates.simulationHistory = simulations.map((s: any) => ({
+          id: s.simId,
+          scenario: s.scenario,
+          date: s.date,
+          stability: s.stability,
+          outcome: s.outcome,
+        }));
+      }
+
+      if (alerts?.length) {
+        updates.alerts = alerts.map((a: any) => ({
+          id: a.alertId,
+          time: a.time,
+          type: a.type,
+          severity: a.severity,
+          message: a.message,
+          status: a.status,
+        }));
+      }
+
+      if (defenseLogs?.length) {
+        updates.defenseLog = defenseLogs.map((d: any) => ({
+          time: d.time,
+          action: d.action,
+          target: d.target,
+          severity: d.severity,
+        }));
+      }
+
+      set(updates as any);
+      console.log('✅ Grid store synced with MongoDB');
+    } catch (err) {
+      console.warn('⚠️ DB load failed, using local data:', err);
+      set({ dbReady: true });
+    }
+  },
+
+  saveSnapshot: () => {
+    const state = get();
+    dbPost('snapshots', {
+      frequency: state.frequency,
+      latency: state.latency,
+      solarGeneration: state.solarGeneration,
+      loadDemand: state.loadDemand,
+      energySaved: state.energySaved,
+      vppResponse: state.vppResponse,
+      dfdt: state.dfdt,
+      status: state.status,
+      activeAgents: state.activeAgents,
+      agentSyncRate: state.agentSyncRate,
+      phaseCoherence: state.phaseCoherence,
+      attackStatus: state.attackStatus,
+      attackIntensity: state.attackIntensity,
+      nodesAtRisk: state.nodesAtRisk,
+      assetsReachable: state.assetsReachable,
+      onlineDevices: state.onlineDevices,
+      offlineDevices: state.offlineDevices,
+      controllableLoad: state.controllableLoad,
+    });
+  },
 }));
