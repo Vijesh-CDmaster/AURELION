@@ -80,9 +80,9 @@ export default function ConfigPage() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-bold uppercase">Critical Warning Level (Hz)</Label>
-                  <span className="text-xs font-mono font-bold text-red-400">0.25</span>
+                  <span className="text-xs font-mono font-bold text-red-400">{criticalWarningLevel.toFixed(2)}</span>
                 </div>
-                <Slider defaultValue={[25]} max={50} step={1} />
+                <Slider value={[criticalWarningLevel * 100]} max={50} step={1} onValueChange={([v]) => setVPPConfig({ criticalWarningLevel: v / 100 })} />
               </div>
 
               <div className="space-y-3">
@@ -115,7 +115,7 @@ export default function ConfigPage() {
                   <Label className="text-xs font-bold uppercase">Attack Detection Sensitivity</Label>
                   <p className="text-[10px] text-muted-foreground italic">Lower value increases sensitivity but may cause false positives.</p>
                 </div>
-                <Select defaultValue="medium">
+                <Select value={detectionSensitivity} onValueChange={(v) => setVPPConfig({ detectionSensitivity: v as 'low' | 'medium' | 'high' })}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -132,7 +132,7 @@ export default function ConfigPage() {
                   <Label className="text-xs font-bold uppercase">Deceptive Signal Injection</Label>
                   <p className="text-[10px] text-muted-foreground italic">Inject randomized noise to disrupt phase-fingerprinting.</p>
                 </div>
-                <Switch defaultChecked />
+                <Switch checked={deceptiveSignalInjection} onCheckedChange={(v) => setVPPConfig({ deceptiveSignalInjection: v })} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -140,7 +140,7 @@ export default function ConfigPage() {
                   <Label className="text-xs font-bold uppercase">Autonomous escalation</Label>
                   <p className="text-[10px] text-muted-foreground italic">Allow system to trigger high-defense mode without operator approval.</p>
                 </div>
-                <Switch defaultChecked />
+                <Switch checked={autonomousEscalation} onCheckedChange={(v) => setVPPConfig({ autonomousEscalation: v })} />
               </div>
             </CardContent>
           </Card>
@@ -155,7 +155,7 @@ export default function ConfigPage() {
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label className="text-xs font-bold uppercase">Forecast Horizon</Label>
-                <Select defaultValue="30s">
+                <Select value={forecastHorizon} onValueChange={(v) => setVPPConfig({ forecastHorizon: v as '10s' | '30s' | '60s' })}>
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -171,7 +171,7 @@ export default function ConfigPage() {
                   <Label className="text-xs font-bold uppercase">Sky-Cam Integration</Label>
                   <p className="text-[10px] text-muted-foreground">Utilize local irradiance sensors.</p>
                 </div>
-                <Switch defaultChecked />
+                <Switch checked={skyCamEnabled} onCheckedChange={(v) => setVPPConfig({ skyCamEnabled: v })} />
               </div>
             </CardContent>
           </Card>
@@ -186,17 +186,17 @@ export default function ConfigPage() {
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label className="text-xs font-bold uppercase">Primary Grid Feed</Label>
-                <Input placeholder="https://api.ukgrid.data/live" className="h-9 text-xs bg-muted/20 border-border" defaultValue="https://api.aura-sentinel.io/v1/feed" />
+                <Input placeholder="https://api.ukgrid.data/live" className="h-9 text-xs bg-muted/20 border-border" value={primaryGridFeed} onChange={(e) => setVPPConfig({ primaryGridFeed: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 rounded-lg border border-border bg-muted/10">
-                  <div className="text-[8px] font-bold uppercase text-muted-foreground mb-1">Pecan Street API</div>
-                  <Badge variant="outline" className="text-[8px] border-emerald-500/30 text-emerald-400 h-4">CONNECTED</Badge>
-                </div>
-                <div className="p-3 rounded-lg border border-border bg-muted/10">
-                  <div className="text-[8px] font-bold uppercase text-muted-foreground mb-1">NREL Solar Data</div>
-                  <Badge variant="outline" className="text-[8px] border-emerald-500/30 text-emerald-400 h-4">CONNECTED</Badge>
-                </div>
+                {dataSources.map((src, i) => (
+                  <div key={i} className="p-3 rounded-lg border border-border bg-muted/10">
+                    <div className="text-[8px] font-bold uppercase text-muted-foreground mb-1">{src.name}</div>
+                    <Badge variant="outline" className={`text-[8px] h-4 ${src.status === 'connected' ? 'border-emerald-500/30 text-emerald-400' : src.status === 'error' ? 'border-red-500/30 text-red-400' : 'border-amber-500/30 text-amber-400'}`}>
+                      {src.status.toUpperCase()}
+                    </Badge>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -207,7 +207,7 @@ export default function ConfigPage() {
             <Info className="h-5 w-5 text-accent" />
           </div>
           <div className="text-xs leading-relaxed text-muted-foreground italic">
-            MARL hyperparameters (Learning Rate: 0.001, Discount Factor: 0.95) are currently set by the Global Optimization Engine. Manual override requires Administrator access in the CLI.
+            MARL hyperparameters (Learning Rate: {marlLearningRate}, Discount Factor: {marlDiscountFactor}) are currently set by the Global Optimization Engine. Manual override requires Administrator access in the CLI.
           </div>
         </div>
       </div>
