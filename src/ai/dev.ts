@@ -1,1 +1,6 @@
-// Flows will be imported for their side effects in this file.
+import { config } from 'dotenv';
+config();
+
+import '@/ai/flows/explain-grid-event.ts';
+import '@/ai/flows/identify-grid-threats.ts';
+import '@/ai/flows/suggest-stability-measures-flow.ts';
