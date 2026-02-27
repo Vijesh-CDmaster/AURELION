@@ -19,17 +19,18 @@ import {
 } from "recharts"
 
 export default function DefensePage() {
-  const { attackStatus, triggerAttack, phaseCoherence } = useGridStore()
+  const { attackStatus, triggerAttack, phaseCoherence, initializeSystemData } = useGridStore()
   const [coherenceData, setCoherenceData] = useState<{ time: number; value: number; attack: number }[]>([])
 
   useEffect(() => {
+    initializeSystemData()
     const data = Array.from({ length: 20 }, (_, i) => ({
       time: i,
       value: Math.random() * 0.2 + 0.1,
       attack: i > 12 ? Math.random() * 0.6 + 0.3 : 0
     }))
     setCoherenceData(data)
-  }, [])
+  }, [initializeSystemData])
 
   return (
     <Shell>
@@ -46,6 +47,7 @@ export default function DefensePage() {
                 size="sm" 
                 className="gap-2 font-bold uppercase tracking-widest text-[10px]"
                 onClick={() => triggerAttack('detected')}
+                suppressHydrationWarning
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Simulate Attack
@@ -56,6 +58,7 @@ export default function DefensePage() {
                 size="sm" 
                 className="gap-2 font-bold uppercase tracking-widest text-[10px] border-emerald-500/30 text-emerald-400"
                 onClick={() => triggerAttack('none')}
+                suppressHydrationWarning
               >
                 <Shield className="h-3.5 w-3.5" />
                 Clear System
@@ -76,7 +79,7 @@ export default function DefensePage() {
                   <p className="text-xs text-red-300/80">Coordinated device surge detected in Central Sector. Deploying desynchronization signals.</p>
                 </div>
               </div>
-              <Button size="sm" className="bg-red-500 hover:bg-red-600 text-white font-bold h-8 text-[10px] uppercase">
+              <Button size="sm" className="bg-red-500 hover:bg-red-600 text-white font-bold h-8 text-[10px] uppercase" suppressHydrationWarning>
                 Escalate Defense
               </Button>
             </div>

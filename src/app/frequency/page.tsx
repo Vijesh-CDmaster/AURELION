@@ -1,15 +1,20 @@
 "use client"
 
+import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { FrequencyChart } from "@/components/dashboard/FrequencyChart"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Activity, ArrowDown, ArrowUp, Download, Table as TableIcon } from "lucide-react"
+import { Activity, ArrowDown, ArrowUp, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
 export default function FrequencyMonitorPage() {
-  const { frequency, status } = useGridStore()
+  const { frequency, status, initializeSystemData } = useGridStore()
+
+  useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
 
   return (
     <Shell>
@@ -20,7 +25,7 @@ export default function FrequencyMonitorPage() {
             <p className="text-muted-foreground text-sm">Real-time analysis of grid frequency deviations and df/dt stability metrics.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" suppressHydrationWarning>
               <Download className="h-4 w-4" />
               Export History
             </Button>

@@ -1,9 +1,19 @@
+"use client"
+
+import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { SolarForecastChart } from "@/components/forecast/SolarForecastChart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Cloud, MapPin } from "lucide-react"
+import { useGridStore } from "@/lib/grid-store"
 
 export default function ForecastPage() {
+  const { shadingEvents, initializeSystemData } = useGridStore()
+
+  useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
+
   return (
     <Shell>
       <div className="space-y-6">
@@ -24,11 +34,7 @@ export default function ForecastPage() {
                 <CardTitle className="text-md font-headline">Upcoming Shading Events</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {[
-                  { time: "13:12", transformer: "T-42", severity: "High", duration: "12m" },
-                  { time: "14:45", transformer: "T-88", severity: "Low", duration: "8m" },
-                  { time: "16:20", transformer: "T-12", severity: "Medium", duration: "15m" },
-                ].map((ev, i) => (
+                {shadingEvents.map((ev, i) => (
                   <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded bg-accent/20 flex items-center justify-center">

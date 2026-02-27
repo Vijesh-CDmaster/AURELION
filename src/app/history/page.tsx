@@ -1,7 +1,8 @@
 "use client"
 
+import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, Download, Filter, Search } from "lucide-react"
@@ -10,7 +11,11 @@ import { Input } from "@/components/ui/input"
 import { useGridStore } from "@/lib/grid-store"
 
 export default function EventLogPage() {
-  const { alerts } = useGridStore()
+  const { alerts, initializeSystemData } = useGridStore()
+
+  useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
 
   return (
     <Shell>
@@ -21,7 +26,7 @@ export default function EventLogPage() {
             <p className="text-muted-foreground text-sm">Comprehensive record of all system events, interventions, and stability anomalies.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2 h-9 text-xs">
+            <Button variant="outline" size="sm" className="gap-2 h-9 text-xs" suppressHydrationWarning>
               <Download className="h-4 w-4" />
               Export CSV
             </Button>
@@ -31,14 +36,14 @@ export default function EventLogPage() {
         <div className="flex flex-col md:flex-row items-center gap-4">
           <div className="relative w-full md:flex-1">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search logs by keyword, ID, or zone..." className="pl-8 h-10 text-xs bg-muted/20 border-border" />
+            <Input placeholder="Search logs by keyword, ID, or zone..." className="pl-8 h-10 text-xs bg-muted/20 border-border" suppressHydrationWarning />
           </div>
           <div className="flex items-center gap-2 w-full md:w-auto">
-            <Button variant="outline" size="sm" className="gap-2 h-10 px-4">
+            <Button variant="outline" size="sm" className="gap-2 h-10 px-4" suppressHydrationWarning>
               <Calendar className="h-4 w-4" />
               Date Range
             </Button>
-            <Button variant="outline" size="sm" className="gap-2 h-10 px-4">
+            <Button variant="outline" size="sm" className="gap-2 h-10 px-4" suppressHydrationWarning>
               <Filter className="h-4 w-4" />
               Severity
             </Button>
@@ -86,41 +91,7 @@ export default function EventLogPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold hover:bg-accent/10">View</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {/* Static mock data for variety */}
-                {[
-                  { time: "11:45:22", type: "VPP", severity: "info", message: "Cluster Gamma formed with 142 agents", status: "resolved" },
-                  { time: "11:30:10", type: "Defense", severity: "critical", message: "Adversarial fingerprinting attempt blocked", status: "resolved" },
-                  { time: "11:02:15", type: "Forecast", severity: "info", message: "Cloud shading event resolved in T-8 sector", status: "resolved" },
-                  { time: "10:45:00", type: "System", severity: "warning", message: "High latency detected in Edge Node Mesh-04", status: "resolved" },
-                ].map((m, i) => (
-                  <TableRow key={i} className="border-border hover:bg-muted/30 group">
-                    <TableCell className="text-xs font-mono">{m.time}</TableCell>
-                    <TableCell className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{m.type}</TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant="outline" 
-                        className={`text-[8px] h-4 ${
-                          m.severity === 'critical' ? 'border-red-500/30 text-red-400 bg-red-500/10' : 
-                          m.severity === 'warning' ? 'border-amber-500/30 text-amber-400 bg-amber-500/10' : 
-                          'border-blue-500/30 text-blue-400 bg-blue-500/10'
-                        }`}
-                      >
-                        {m.severity.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">{m.message}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                        <span className="text-[10px] font-bold uppercase">{m.status}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold">View</Button>
+                      <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold hover:bg-accent/10" suppressHydrationWarning>View</Button>
                     </TableCell>
                   </TableRow>
                 ))}

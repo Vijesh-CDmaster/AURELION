@@ -1,20 +1,24 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { PlayCircle, RefreshCcw, Save, Trash2, Sliders, Activity, Zap, ShieldAlert } from "lucide-react"
+import { PlayCircle, RefreshCcw, Save, Trash2, Sliders, Activity, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/hooks/use-toast"
-import { useState } from "react"
 
 export default function SimulationPage() {
   const [isRunning, setIsRunning] = useState(false)
-  const { updateFrequency } = useGridStore()
+  const { updateFrequency, simulationHistory, initializeSystemData } = useGridStore()
+
+  useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
 
   const runSimulation = () => {
     setIsRunning(true)
@@ -39,7 +43,7 @@ export default function SimulationPage() {
             <p className="text-muted-foreground text-sm">Validate MARL coordination and defense mechanisms against simulated grid events.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" suppressHydrationWarning>
               <Save className="h-4 w-4" />
               Save Config
             </Button>
@@ -48,6 +52,7 @@ export default function SimulationPage() {
               className={`gap-2 font-bold uppercase tracking-widest text-[10px] ${isRunning ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'}`}
               onClick={runSimulation}
               disabled={isRunning}
+              suppressHydrationWarning
             >
               {isRunning ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
               {isRunning ? "Running..." : "Run Simulation"}
@@ -67,7 +72,7 @@ export default function SimulationPage() {
               <div className="space-y-3">
                 <Label className="text-xs font-bold uppercase text-muted-foreground">Scenario Type</Label>
                 <Select defaultValue="ev-mass">
-                  <SelectTrigger className="bg-muted/20 border-border">
+                  <SelectTrigger className="bg-muted/20 border-border" suppressHydrationWarning>
                     <SelectValue placeholder="Select scenario" />
                   </SelectTrigger>
                   <SelectContent>
@@ -151,11 +156,7 @@ export default function SimulationPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {[
-                { id: "SIM-101", scenario: "Adversarial Demand Attack", date: "2024-05-20 10:15", stability: "98%", outcome: "SUCCESS" },
-                { id: "SIM-099", scenario: "Sudden Cloud Shading", date: "2024-05-20 09:30", stability: "92%", outcome: "SUCCESS" },
-                { id: "SIM-098", scenario: "Mass EV Charging", date: "2024-05-19 18:45", stability: "84%", outcome: "WARNING" },
-              ].map((sim) => (
+              {simulationHistory.map((sim) => (
                 <div key={sim.id} className="p-3 rounded-lg bg-muted/20 border border-border flex items-center justify-between group hover:border-primary/50 transition-colors">
                   <div className="flex items-center gap-4">
                     <div className="text-xs font-mono font-bold text-muted-foreground">{sim.id}</div>
@@ -172,7 +173,7 @@ export default function SimulationPage() {
                     <Badge variant={sim.outcome === 'SUCCESS' ? 'default' : 'secondary'} className={`text-[8px] ${sim.outcome === 'SUCCESS' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
                       {sim.outcome}
                     </Badge>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground group-hover:text-primary">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground group-hover:text-primary" suppressHydrationWarning>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

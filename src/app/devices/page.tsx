@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
@@ -9,16 +10,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-const devices = [
-  { id: "EV-902", type: "EV Charger", status: "online", load: "+7.2kW", cluster: "Cluster A", latency: "12ms" },
-  { id: "AC-441", type: "HVAC", status: "online", load: "-2.4kW", cluster: "Cluster B", latency: "45ms" },
-  { id: "BAT-11", type: "Home Battery", status: "responding", load: "+5.0kW", cluster: "Cluster A", latency: "8ms" },
-  { id: "EV-885", type: "EV Charger", status: "offline", load: "0.0kW", cluster: "Cluster C", latency: "N/A" },
-  { id: "AC-102", type: "HVAC", status: "online", load: "-1.8kW", cluster: "Cluster A", latency: "52ms" },
-  { id: "BAT-09", type: "Home Battery", status: "online", load: "+4.2kW", cluster: "Cluster B", latency: "10ms" },
-]
-
 export default function DevicesPage() {
+  const { devices, initializeSystemData } = useGridStore()
+
+  useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
+
   return (
     <Shell>
       <div className="space-y-6">
@@ -30,9 +28,9 @@ export default function DevicesPage() {
           <div className="flex items-center gap-2">
             <div className="relative w-full md:w-64">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search device ID..." className="pl-8 h-9 text-xs" />
+              <Input placeholder="Search device ID..." className="pl-8 h-9 text-xs" suppressHydrationWarning />
             </div>
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" suppressHydrationWarning>
               <Filter className="h-4 w-4" />
               Filter
             </Button>
@@ -99,7 +97,7 @@ export default function DevicesPage() {
             <CardContent className="flex flex-col items-center justify-center py-4">
               <div className="text-4xl font-headline font-black text-primary">+4.2<span className="text-lg">MW</span></div>
               <div className="text-[10px] text-muted-foreground mt-1 uppercase font-bold">Controllable Load</div>
-              <Button variant="link" className="text-accent text-[10px] h-auto p-0 mt-4">VIEW CLUSTER BREAKDOWN</Button>
+              <Button variant="link" className="text-accent text-[10px] h-auto p-0 mt-4" suppressHydrationWarning>VIEW CLUSTER BREAKDOWN</Button>
             </CardContent>
           </Card>
         </div>
@@ -149,7 +147,7 @@ export default function DevicesPage() {
                     </TableCell>
                     <TableCell className="text-xs font-mono">{device.latency}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold">Inspect</Button>
+                      <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold" suppressHydrationWarning>Inspect</Button>
                     </TableCell>
                   </TableRow>
                 ))}

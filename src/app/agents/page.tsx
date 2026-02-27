@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 
 export default function AgentsPage() {
-  const { activeAgents } = useGridStore()
+  const { activeAgents, agentClusters, initializeSystemData } = useGridStore()
   const [dots, setDots] = useState<{ top: number; left: number; opacity: number; isRed: boolean }[]>([])
 
   useEffect(() => {
+    initializeSystemData()
     const newDots = Array.from({ length: 40 }).map(() => ({
       top: Math.random() * 80 + 10,
       left: Math.random() * 80 + 10,
@@ -21,14 +22,7 @@ export default function AgentsPage() {
       isRed: Math.random() > 0.8
     }))
     setDots(newDots)
-  }, [])
-
-  const agentClusters = [
-    { name: "Urban Residential Cluster A", count: 2450, response: 98, status: "active" },
-    { name: "Industrial Zone 4", count: 120, response: 100, status: "active" },
-    { name: "South Sector PV Cluster", count: 4800, response: 88, status: "active" },
-    { name: "V2G Fleet Hub", count: 850, response: 95, status: "idle" },
-  ]
+  }, [initializeSystemData])
 
   return (
     <Shell>
@@ -40,7 +34,7 @@ export default function AgentsPage() {
           </div>
           <div className="relative w-full md:w-64">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search agents..." className="pl-8 h-9 text-xs" />
+            <Input placeholder="Search agents..." className="pl-8 h-9 text-xs" suppressHydrationWarning />
           </div>
         </div>
 
@@ -145,8 +139,8 @@ export default function AgentsPage() {
                 ))}
                 <div className="bg-card/80 backdrop-blur-sm p-4 rounded-lg border border-border z-10 text-center">
                   <Activity className="h-8 w-8 text-accent mx-auto mb-2 animate-pulse" />
-                  <div className="text-xs font-bold">10,248 Agents Synced</div>
-                  <div className="text-[10px] text-muted-foreground">Across 42 Transformers</div>
+                  <div className="text-xs font-bold">{activeAgents.toLocaleString()} Agents Synced</div>
+                  <div className="text-[10px] text-muted-foreground">Across Distributed Transformers</div>
                 </div>
               </div>
             </CardContent>

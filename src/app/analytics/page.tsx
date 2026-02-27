@@ -1,9 +1,10 @@
 "use client"
 
+import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { BarChart3, TrendingUp, TrendingDown, Download, Calendar, Zap, ShieldCheck, Activity } from "lucide-react"
+import { BarChart3, TrendingUp, Download, Calendar, Zap, ShieldCheck, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { 
   Bar, 
@@ -17,18 +18,12 @@ import {
   LineChart
 } from "recharts"
 
-const performanceData = [
-  { day: "Mon", stability: 98, savings: 1200, attacks: 0 },
-  { day: "Tue", stability: 96, savings: 1100, attacks: 1 },
-  { day: "Wed", stability: 99, savings: 1400, attacks: 0 },
-  { day: "Thu", stability: 94, savings: 900, attacks: 3 },
-  { day: "Fri", stability: 97, savings: 1300, attacks: 0 },
-  { day: "Sat", stability: 99, savings: 1500, attacks: 0 },
-  { day: "Sun", stability: 98, savings: 1450, attacks: 0 },
-]
-
 export default function AnalyticsPage() {
-  const { energySaved } = useGridStore()
+  const { energySaved, performanceData, initializeSystemData } = useGridStore()
+
+  useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
 
   return (
     <Shell>
@@ -39,11 +34,11 @@ export default function AnalyticsPage() {
             <p className="text-muted-foreground text-sm">Aggregated KPI monitoring and long-term stability trends.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" suppressHydrationWarning>
               <Calendar className="h-4 w-4" />
               Last 7 Days
             </Button>
-            <Button size="sm" className="gap-2 bg-primary text-white font-bold h-8 text-[10px] uppercase">
+            <Button size="sm" className="gap-2 bg-primary text-white font-bold h-8 text-[10px] uppercase" suppressHydrationWarning>
               <Download className="h-4 w-4" />
               Export PDF Report
             </Button>
@@ -83,7 +78,7 @@ export default function AnalyticsPage() {
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
-              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Response Latency</CardTitle>
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Response Latency</CardDescription>
               <CardTitle className="text-3xl font-headline font-black text-blue-400">42.5ms</CardTitle>
             </CardHeader>
             <CardContent>

@@ -11,12 +11,12 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
 export function GridDashboard() {
-  const { addHistoryPoint, frequency, status, attackStatus, initializeHistory } = useGridStore()
+  const { addHistoryPoint, frequency, status, attackStatus, initializeSystemData } = useGridStore()
 
   // Initialize history on client mount
   React.useEffect(() => {
-    initializeHistory()
-  }, [initializeHistory])
+    initializeSystemData()
+  }, [initializeSystemData])
 
   // Simulate real-time data drift
   React.useEffect(() => {
@@ -50,7 +50,7 @@ export function GridDashboard() {
                 <div className="text-xs font-bold mb-1">Potential Shading Event</div>
                 <div className="text-[10px] text-muted-foreground">Transformer T-42 sector in 12 mins. Probability: 88%.</div>
               </div>
-              <Button asChild variant="outline" size="sm" className="w-full text-[10px] font-bold uppercase tracking-widest">
+              <Button asChild variant="outline" size="sm" className="w-full text-[10px] font-bold uppercase tracking-widest" suppressHydrationWarning>
                 <Link href="/forecast">
                   View Sky-Cam Feed
                 </Link>
@@ -69,7 +69,7 @@ export function GridDashboard() {
               <p className="text-[11px] text-muted-foreground italic leading-relaxed">
                 "System health is currently {status.toUpperCase()}. MARL agents are synchronized. No adversarial phase alignment detected."
               </p>
-              <Button asChild className="w-full bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity">
+              <Button asChild className="w-full bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity" suppressHydrationWarning>
                 <Link href="/assistant">
                   Initiate Full Analysis
                 </Link>
@@ -115,7 +115,7 @@ export function GridDashboard() {
                   <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : 'DECEPTIVE ON'}</div>
                 </div>
               </div>
-              <Button asChild variant="outline" size="sm" className="w-full bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors">
+              <Button asChild variant="outline" size="sm" className="w-full bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors" suppressHydrationWarning>
                 <Link href="/defense">
                   Open Defense Console
                 </Link>

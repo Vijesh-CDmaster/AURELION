@@ -12,19 +12,16 @@ import {
   Cell
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Cloud, Sun, CloudLightning } from "lucide-react"
-
-const forecastData = [
-  { time: "10:00", generation: 4200, shading: "none" },
-  { time: "11:00", generation: 4500, shading: "none" },
-  { time: "12:00", generation: 4800, shading: "none" },
-  { time: "13:00", generation: 2100, shading: "high" }, // Cloud Event
-  { time: "14:00", generation: 3800, shading: "medium" },
-  { time: "15:00", generation: 4400, shading: "none" },
-  { time: "16:00", generation: 4100, shading: "none" },
-]
+import { Sun } from "lucide-react"
+import { useGridStore } from "@/lib/grid-store"
 
 export function SolarForecastChart() {
+  const { solarForecast, initializeSystemData } = useGridStore()
+
+  React.useEffect(() => {
+    initializeSystemData()
+  }, [initializeSystemData])
+
   return (
     <Card className="bg-card border-border shadow-md">
       <CardHeader>
@@ -42,7 +39,7 @@ export function SolarForecastChart() {
       <CardContent>
         <div className="h-[350px] w-full mt-4">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={forecastData}>
+            <BarChart data={solarForecast}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
               <XAxis 
                 dataKey="time" 
@@ -64,7 +61,7 @@ export function SolarForecastChart() {
                 }}
               />
               <Bar dataKey="generation" radius={[4, 4, 0, 0]}>
-                {forecastData.map((entry, index) => (
+                {solarForecast.map((entry, index) => (
                   <Cell 
                     key={`cell-${index}`} 
                     fill={entry.shading === 'high' ? 'hsl(var(--accent))' : 'hsl(var(--primary))'} 
