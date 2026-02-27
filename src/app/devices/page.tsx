@@ -1,0 +1,163 @@
+"use client"
+
+import { Shell } from "@/components/layout/Shell"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { useGridStore } from "@/lib/grid-store"
+import { Smartphone, Zap, Battery, Car, Thermometer, Wifi, Search, Filter } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+const devices = [
+  { id: "EV-902", type: "EV Charger", status: "online", load: "+7.2kW", cluster: "Cluster A", latency: "12ms" },
+  { id: "AC-441", type: "HVAC", status: "online", load: "-2.4kW", cluster: "Cluster B", latency: "45ms" },
+  { id: "BAT-11", type: "Home Battery", status: "responding", load: "+5.0kW", cluster: "Cluster A", latency: "8ms" },
+  { id: "EV-885", type: "EV Charger", status: "offline", load: "0.0kW", cluster: "Cluster C", latency: "N/A" },
+  { id: "AC-102", type: "HVAC", status: "online", load: "-1.8kW", cluster: "Cluster A", latency: "52ms" },
+  { id: "BAT-09", type: "Home Battery", status: "online", load: "+4.2kW", cluster: "Cluster B", latency: "10ms" },
+]
+
+export default function DevicesPage() {
+  return (
+    <Shell>
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-headline font-bold text-foreground">Edge Asset Management</h2>
+            <p className="text-muted-foreground text-sm">Real-time status and telemetry for individual IoT grid assets.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search device ID..." className="pl-8 h-9 text-xs" />
+            </div>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Filter className="h-4 w-4" />
+              Filter
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className="bg-card border-border">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Device Mix</CardDescription>
+              <Smartphone className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2"><Car className="h-3 w-3 text-primary" /> EVs</div>
+                <span className="font-bold">42%</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-1">
+                <div className="bg-primary h-full w-[42%]" />
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2"><Thermometer className="h-3 w-3 text-accent" /> HVAC</div>
+                <span className="font-bold">35%</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-1">
+                <div className="bg-accent h-full w-[35%]" />
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2"><Battery className="h-3 w-3 text-emerald-400" /> Storage</div>
+                <span className="font-bold">23%</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-1">
+                <div className="bg-emerald-400 h-full w-[23%]" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Global Status</CardDescription>
+              <Wifi className="h-4 w-4 text-emerald-400" />
+            </CardHeader>
+            <CardContent className="flex flex-col items-center justify-center py-4">
+              <div className="text-4xl font-headline font-black text-emerald-400">98.2%</div>
+              <div className="text-[10px] text-muted-foreground mt-1 uppercase font-bold">Assets Reachable</div>
+              <div className="mt-4 flex gap-4">
+                <div className="text-center">
+                  <div className="text-xs font-bold">10,064</div>
+                  <div className="text-[8px] text-muted-foreground uppercase">Online</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs font-bold text-red-400">184</div>
+                  <div className="text-[8px] text-muted-foreground uppercase">Offline</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Aggregated Dispatch</CardDescription>
+              <Zap className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent className="flex flex-col items-center justify-center py-4">
+              <div className="text-4xl font-headline font-black text-primary">+4.2<span className="text-lg">MW</span></div>
+              <div className="text-[10px] text-muted-foreground mt-1 uppercase font-bold">Controllable Load</div>
+              <Button variant="link" className="text-accent text-[10px] h-auto p-0 mt-4">VIEW CLUSTER BREAKDOWN</Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-sm font-bold uppercase tracking-widest">Edge Asset Directory</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Asset ID</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Type</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Status</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Cluster</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Cur. Load</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold text-muted-foreground">Latency</TableHead>
+                  <TableHead className="text-right text-[10px] uppercase font-bold text-muted-foreground">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {devices.map((device) => (
+                  <TableRow key={device.id} className="border-border hover:bg-muted/30">
+                    <TableCell className="font-mono text-xs font-bold">{device.id}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 text-xs">
+                        {device.type.includes('EV') ? <Car className="h-3 w-3" /> : device.type.includes('HVAC') ? <Thermometer className="h-3 w-3" /> : <Battery className="h-3 w-3" />}
+                        {device.type}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant="outline" 
+                        className={`text-[8px] h-4 ${
+                          device.status === 'online' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 
+                          device.status === 'responding' ? 'border-primary/30 text-primary bg-primary/10' : 
+                          'border-red-500/30 text-red-400 bg-red-500/10'
+                        }`}
+                      >
+                        {device.status.toUpperCase()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{device.cluster}</TableCell>
+                    <TableCell className={`text-xs font-bold ${device.load.startsWith('+') ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {device.load}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">{device.latency}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold">Inspect</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    </Shell>
+  )
+}

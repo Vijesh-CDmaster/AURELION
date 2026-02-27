@@ -6,9 +6,12 @@ import { FrequencyChart } from "./FrequencyChart"
 import { EventInjector } from "../simulator/EventInjector"
 import { VPPConfigPanel } from "../vpp/VPPConfigPanel"
 import { useGridStore } from "@/lib/grid-store"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Bot, Sparkles, CloudSun, ShieldAlert, Zap } from "lucide-react"
+import Link from "next/link"
 
 export function GridDashboard() {
-  const { addHistoryPoint, frequency } = useGridStore()
+  const { addHistoryPoint, frequency, status, attackStatus } = useGridStore()
 
   // Simulate real-time data drift
   React.useEffect(() => {
@@ -24,27 +27,96 @@ export function GridDashboard() {
   return (
     <div className="space-y-6">
       <StatusGrid />
+      
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <FrequencyChart />
         </div>
-        <div>
-          <EventInjector />
+        <div className="space-y-6">
+          <Card className="bg-card border-border shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <CloudSun className="h-4 w-4 text-emerald-400" />
+                Forecast Alert
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
+                <div className="text-xs font-bold mb-1">Potential Shading Event</div>
+                <div className="text-[10px] text-muted-foreground">Transformer T-42 sector in 12 mins. Probability: 88%.</div>
+              </div>
+              <Link href="/forecast">
+                <button className="w-full py-2 bg-muted/50 hover:bg-muted text-[10px] font-bold uppercase tracking-widest rounded-lg border border-border">
+                  View Sky-Cam Feed
+                </button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border shadow-md bg-accent/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <Bot className="h-4 w-4 text-accent" />
+                AI Strategy
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-[11px] text-muted-foreground italic leading-relaxed">
+                "System health is currently {status.toUpperCase()}. MARL agents are synchronized. No adversarial phase alignment detected."
+              </p>
+              <Link href="/assistant">
+                <button className="w-full py-2 bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity">
+                  Initiate Full Analysis
+                </button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <VPPConfigPanel />
-        <div className="rounded-xl border border-border bg-card p-6 flex flex-col justify-center items-center text-center space-y-4">
-          <div className="h-12 w-12 rounded-full bg-accent/20 flex items-center justify-center glow-accent">
-            <span className="text-accent font-bold">AI</span>
-          </div>
-          <h3 className="text-xl font-headline font-semibold">Proactive Insight Ready</h3>
-          <p className="text-sm text-muted-foreground max-w-xs">
-            The Sentinel AI has detected a potential cloud shading event at Transformer T-42 in 12 minutes.
-          </p>
-          <button className="px-6 py-2 bg-accent text-accent-foreground rounded-lg font-semibold text-sm hover:opacity-90 transition-opacity">
-            Review AI Mitigation Strategy
-          </button>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <EventInjector />
+        </div>
+        <div className="lg:col-span-2">
+          <Card className="bg-card border-border shadow-md h-full">
+            <CardHeader>
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-red-500" />
+                Live Defense Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <div className="text-3xl font-headline font-black text-foreground">
+                    {attackStatus === 'none' ? 'NO ATTACK' : 'MITIGATING'}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
+                    Phase Coherence: {attackStatus === 'none' ? '0.12' : '0.85'}
+                  </div>
+                </div>
+                <div className={`h-12 w-12 rounded-full flex items-center justify-center ${attackStatus === 'none' ? 'bg-muted/50' : 'bg-red-500/20 animate-pulse'}`}>
+                  <ShieldAlert className={`h-6 w-6 ${attackStatus === 'none' ? 'text-muted-foreground' : 'text-red-500'}`} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 rounded-lg border border-border bg-muted/20">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Nodes at Risk</div>
+                  <div className="text-sm font-bold">{attackStatus === 'none' ? '0' : '1,240'}</div>
+                </div>
+                <div className="p-3 rounded-lg border border-border bg-muted/20">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Defense Level</div>
+                  <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : 'DECEPTIVE ON'}</div>
+                </div>
+              </div>
+              <Link href="/defense">
+                <button className="w-full py-2 bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors">
+                  Open Defense Console
+                </button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
