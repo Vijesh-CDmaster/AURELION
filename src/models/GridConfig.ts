@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Model } from 'mongoose';
 
-export interface IGridConfig extends Document {
+export interface IGridConfig {
   _id: string; // singleton key
   vppEnabled: boolean;
   bidirectionalCharging: boolean;
