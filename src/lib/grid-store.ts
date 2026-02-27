@@ -47,14 +47,12 @@ export interface GridState {
   triggerAttack: (type: AttackStatus) => void;
   addAlert: (alert: Omit<Alert, 'id'>) => void;
   resolveAlert: (id: string) => void;
+  initializeHistory: () => void;
 }
 
 export const useGridStore = create<GridState>((set) => ({
   frequency: 50.00,
-  frequencyHistory: Array.from({ length: 60 }, (_, i) => ({
-    time: `${i}:00`,
-    value: 50.00 + (Math.random() * 0.04 - 0.02),
-  })),
+  frequencyHistory: [], // Start empty to avoid hydration mismatch
   latency: 42,
   vppResponse: 0,
   solarGeneration: 1240,
@@ -72,6 +70,16 @@ export const useGridStore = create<GridState>((set) => ({
     { id: '1', time: '12:00:00', type: 'System', severity: 'info', message: 'MARL Agents synchronized with Transformer T-42', status: 'resolved' },
     { id: '2', time: '12:15:00', type: 'Forecast', severity: 'warning', message: 'Potential cloud shading detected in West Sector', status: 'active' }
   ],
+
+  initializeHistory: () => set((state) => {
+    if (state.frequencyHistory.length > 0) return state;
+    return {
+      frequencyHistory: Array.from({ length: 60 }, (_, i) => ({
+        time: `${i}:00`,
+        value: 50.00 + (Math.random() * 0.04 - 0.02),
+      }))
+    };
+  }),
 
   updateFrequency: (val) => set((state) => {
     const dev = Math.abs(50 - val);

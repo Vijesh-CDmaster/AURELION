@@ -4,14 +4,18 @@ import * as React from "react"
 import { StatusGrid } from "./StatusGrid"
 import { FrequencyChart } from "./FrequencyChart"
 import { EventInjector } from "../simulator/EventInjector"
-import { VPPConfigPanel } from "../vpp/VPPConfigPanel"
 import { useGridStore } from "@/lib/grid-store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Bot, Sparkles, CloudSun, ShieldAlert, Zap } from "lucide-react"
+import { Bot, CloudSun, ShieldAlert } from "lucide-react"
 import Link from "next/link"
 
 export function GridDashboard() {
-  const { addHistoryPoint, frequency, status, attackStatus } = useGridStore()
+  const { addHistoryPoint, frequency, status, attackStatus, initializeHistory } = useGridStore()
+
+  // Initialize history on client mount
+  React.useEffect(() => {
+    initializeHistory()
+  }, [initializeHistory])
 
   // Simulate real-time data drift
   React.useEffect(() => {
@@ -89,7 +93,7 @@ export function GridDashboard() {
             <CardContent>
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <div className="text-3xl font-headline font-black text-foreground">
+                  <div className="text-3xl font-headline font-bold text-foreground">
                     {attackStatus === 'none' ? 'NO ATTACK' : 'MITIGATING'}
                   </div>
                   <div className="text-[10px] text-muted-foreground font-bold uppercase mt-1">

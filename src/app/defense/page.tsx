@@ -1,9 +1,10 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Shield, AlertTriangle, Activity, Lock, Unlock, ZapOff, Fingerprint, History } from "lucide-react"
+import { Shield, AlertTriangle, Lock, Unlock, Fingerprint, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -17,14 +18,18 @@ import {
   YAxis 
 } from "recharts"
 
-const coherenceData = Array.from({ length: 20 }, (_, i) => ({
-  time: i,
-  value: Math.random() * 0.2 + 0.1,
-  attack: i > 12 ? Math.random() * 0.6 + 0.3 : 0
-}))
-
 export default function DefensePage() {
   const { attackStatus, triggerAttack, phaseCoherence } = useGridStore()
+  const [coherenceData, setCoherenceData] = useState<{ time: number; value: number; attack: number }[]>([])
+
+  useEffect(() => {
+    const data = Array.from({ length: 20 }, (_, i) => ({
+      time: i,
+      value: Math.random() * 0.2 + 0.1,
+      attack: i > 12 ? Math.random() * 0.6 + 0.3 : 0
+    }))
+    setCoherenceData(data)
+  }, [])
 
   return (
     <Shell>
@@ -82,7 +87,7 @@ export default function DefensePage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Phase Coherence</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black text-primary">{(phaseCoherence * 100).toFixed(1)}%</CardTitle>
+              <CardTitle className="text-3xl font-headline font-bold text-primary">{(phaseCoherence * 100).toFixed(1)}%</CardTitle>
             </CardHeader>
             <CardContent>
               <Progress value={phaseCoherence * 100} className="h-1.5" />
@@ -95,7 +100,7 @@ export default function DefensePage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Defense Status</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black uppercase flex items-center gap-2">
+              <CardTitle className="text-3xl font-headline font-bold uppercase flex items-center gap-2">
                 {attackStatus === 'none' ? <Unlock className="h-6 w-6 text-muted-foreground" /> : <Lock className="h-6 w-6 text-accent" />}
                 {attackStatus === 'none' ? 'Passive' : 'ACTIVE'}
               </CardTitle>
@@ -110,7 +115,7 @@ export default function DefensePage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Attack Intensity</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black">
+              <CardTitle className="text-3xl font-headline font-bold">
                 {attackStatus === 'none' ? '0.0' : '8.4'}<span className="text-sm text-muted-foreground ml-1">MW/min</span>
               </CardTitle>
             </CardHeader>

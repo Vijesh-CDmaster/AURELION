@@ -1,15 +1,27 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Users, Activity, Zap, Shield, TrendingUp, Search } from "lucide-react"
+import { Activity, Zap, Search, TrendingUp } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 
 export default function AgentsPage() {
   const { activeAgents } = useGridStore()
+  const [dots, setDots] = useState<{ top: number; left: number; opacity: number; isRed: boolean }[]>([])
+
+  useEffect(() => {
+    const newDots = Array.from({ length: 40 }).map(() => ({
+      top: Math.random() * 80 + 10,
+      left: Math.random() * 80 + 10,
+      opacity: Math.random() * 0.7 + 0.3,
+      isRed: Math.random() > 0.8
+    }))
+    setDots(newDots)
+  }, [])
 
   const agentClusters = [
     { name: "Urban Residential Cluster A", count: 2450, response: 98, status: "active" },
@@ -36,7 +48,7 @@ export default function AgentsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Active Agents</CardDescription>
-              <CardTitle className="text-3xl font-headline font-black text-primary">{activeAgents.toLocaleString()}</CardTitle>
+              <CardTitle className="text-3xl font-headline font-bold text-primary">{activeAgents.toLocaleString()}</CardTitle>
             </CardHeader>
             <CardContent>
               <Progress value={94} className="h-1.5" />
@@ -46,8 +58,8 @@ export default function AgentsPage() {
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
-              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Avg Response</CardTitle>
-              <CardTitle className="text-3xl font-headline font-black">45ms</CardTitle>
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Avg Response</CardDescription>
+              <CardTitle className="text-3xl font-headline font-bold">45ms</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-1 text-[10px] text-emerald-400">
@@ -59,8 +71,8 @@ export default function AgentsPage() {
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
-              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Virtual Inertia</CardTitle>
-              <CardTitle className="text-3xl font-headline font-black text-accent">0.85 MW·s</CardTitle>
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Virtual Inertia</CardDescription>
+              <CardTitle className="text-3xl font-headline font-bold text-accent">0.85 MW·s</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-[10px] text-muted-foreground">Synthetic stabilizing mass</div>
@@ -69,8 +81,8 @@ export default function AgentsPage() {
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
-              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Reward Weights</CardTitle>
-              <CardTitle className="text-3xl font-headline font-black">MUTATED</CardTitle>
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Reward Weights</CardDescription>
+              <CardTitle className="text-3xl font-headline font-bold">MUTATED</CardTitle>
             </CardHeader>
             <CardContent>
               <Badge variant="outline" className="text-[8px] border-accent/30 text-accent">ADAPTIVE MODE</Badge>
@@ -114,22 +126,20 @@ export default function AgentsPage() {
             <CardContent className="flex-1 flex items-center justify-center">
               <div className="relative h-64 w-full bg-muted/10 rounded-xl border border-border overflow-hidden flex items-center justify-center">
                 <div className="absolute inset-0 opacity-20 pointer-events-none">
-                  {/* Mock map pattern */}
                   <div className="grid grid-cols-10 grid-rows-10 h-full w-full">
                     {Array.from({ length: 100 }).map((_, i) => (
                       <div key={i} className="border-[0.5px] border-border/20" />
                     ))}
                   </div>
                 </div>
-                {/* Simulated activity dots */}
-                {Array.from({ length: 40 }).map((_, i) => (
+                {dots.map((dot, i) => (
                   <div 
                     key={i} 
-                    className={`absolute h-1.5 w-1.5 rounded-full ${Math.random() > 0.8 ? 'bg-red-500 animate-pulse' : 'bg-primary'}`}
+                    className={`absolute h-1.5 w-1.5 rounded-full ${dot.isRed ? 'bg-red-500 animate-pulse' : 'bg-primary'}`}
                     style={{ 
-                      top: `${Math.random() * 80 + 10}%`, 
-                      left: `${Math.random() * 80 + 10}%`,
-                      opacity: Math.random() * 0.7 + 0.3
+                      top: `${dot.top}%`, 
+                      left: `${dot.left}%`,
+                      opacity: dot.opacity
                     }}
                   />
                 ))}
