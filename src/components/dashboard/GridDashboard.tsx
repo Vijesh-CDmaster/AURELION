@@ -8,6 +8,7 @@ import { useGridStore } from "@/lib/grid-store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Bot, CloudSun, ShieldAlert } from "lucide-react"
 import Link from "next/link"
+import { Button } from "@/components/ui/button"
 
 export function GridDashboard() {
   const { addHistoryPoint, frequency, status, attackStatus, initializeHistory } = useGridStore()
@@ -49,11 +50,11 @@ export function GridDashboard() {
                 <div className="text-xs font-bold mb-1">Potential Shading Event</div>
                 <div className="text-[10px] text-muted-foreground">Transformer T-42 sector in 12 mins. Probability: 88%.</div>
               </div>
-              <Link href="/forecast">
-                <button className="w-full py-2 bg-muted/50 hover:bg-muted text-[10px] font-bold uppercase tracking-widest rounded-lg border border-border">
+              <Button asChild variant="outline" size="sm" className="w-full text-[10px] font-bold uppercase tracking-widest">
+                <Link href="/forecast">
                   View Sky-Cam Feed
-                </button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
 
@@ -68,11 +69,11 @@ export function GridDashboard() {
               <p className="text-[11px] text-muted-foreground italic leading-relaxed">
                 "System health is currently {status.toUpperCase()}. MARL agents are synchronized. No adversarial phase alignment detected."
               </p>
-              <Link href="/assistant">
-                <button className="w-full py-2 bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity">
+              <Button asChild className="w-full bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity">
+                <Link href="/assistant">
                   Initiate Full Analysis
-                </button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -114,11 +115,11 @@ export function GridDashboard() {
                   <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : 'DECEPTIVE ON'}</div>
                 </div>
               </div>
-              <Link href="/defense">
-                <button className="w-full py-2 bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors">
+              <Button asChild variant="outline" size="sm" className="w-full bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors">
+                <Link href="/defense">
                   Open Defense Console
-                </button>
-              </Link>
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
