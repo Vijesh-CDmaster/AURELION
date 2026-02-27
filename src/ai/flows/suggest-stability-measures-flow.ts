@@ -1,99 +1,95 @@
 'use server';
 /**
- * @fileOverview An AI agent that analyzes grid data and threats to suggest proactive measures and VPP configuration adjustments.
+ * @fileOverview Analyzes grid data and threats to suggest proactive measures
+ * and VPP configuration adjustments.
  *
- * - suggestStabilityMeasures - A function that handles the process of suggesting stability measures.
- * - SuggestStabilityMeasuresInput - The input type for the suggestStabilityMeasures function.
- * - SuggestStabilityMeasuresOutput - The return type for the suggestStabilityMeasures function.
+ * Uses the Featherless AI (OpenAI-compatible) endpoint.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { chatCompletionJSON } from '@/ai/featherless';
 
-const ForecastedCloudShadingEventSchema = z.object({
-  time: z.string().describe('The estimated time of the cloud shading event.'),
-  severity: z.string().describe('The severity of the cloud shading event (e.g., "high", "medium", "low").'),
-  transformerId: z.string().describe('The ID of the transformer affected by the event.'),
-});
+// ────────── Types ──────────
 
-const VPPConfigurationSchema = z.object({
-  bidirectionalChargingEnabled: z.boolean().describe('Whether bidirectional charging is currently enabled for VPP devices.'),
-  responseThreshold: z.number().describe('The frequency deviation threshold that triggers VPP response, in Hz.'),
-  capacityReservedPercent: z.number().describe('The percentage of total VPP capacity reserved for frequency response.'),
-  geographicalConcentration: z.string().optional().describe('Describes the geographical concentration of VPP assets (e.g., "urban", "rural", "distributed").'),
-});
-
-const SuggestStabilityMeasuresInputSchema = z.object({
-  threatDescription: z.string().describe('A detailed description of the identified grid instability threat.'),
-  currentFrequencyDeviation: z.number().describe('The current grid frequency deviation from nominal, in Hz.'),
-  responseLatency: z.number().describe('The current system response latency to grid events, in milliseconds.'),
-  forecastedCloudShadingEvents: z.array(ForecastedCloudShadingEventSchema).describe('A list of forecasted cloud shading events that could impact solar generation.'),
-  vppConfiguration: VPPConfigurationSchema.describe('The current configuration parameters of the Virtual Power Plant.'),
-});
-export type SuggestStabilityMeasuresInput = z.infer<typeof SuggestStabilityMeasuresInputSchema>;
-
-const RecommendedVPPAdjustmentsSchema = z.object({
-  bidirectionalChargingEnabled: z.boolean().optional().describe('Suggested change for whether bidirectional charging should be enabled.'),
-  responseThreshold: z.number().optional().describe('Suggested new frequency deviation threshold for VPP response, in Hz.'),
-  capacityReservedPercent: z.number().optional().describe('Suggested new percentage of total VPP capacity to be reserved for frequency response.'),
-});
-
-const SuggestStabilityMeasuresOutputSchema = z.object({
-  suggestedMeasures: z.array(z.string()).describe('A list of specific, actionable proactive measures to maintain grid stability.'),
-  recommendedVPPAdjustments: RecommendedVPPAdjustmentsSchema.describe('Specific configuration adjustments recommended for the Virtual Power Plant.'),
-  explanation: z.string().describe('A detailed explanation for the suggested measures and VPP adjustments, including reasoning.'),
-});
-export type SuggestStabilityMeasuresOutput = z.infer<typeof SuggestStabilityMeasuresOutputSchema>;
-
-export async function suggestStabilityMeasures(input: SuggestStabilityMeasuresInput): Promise<SuggestStabilityMeasuresOutput> {
-  return suggestStabilityMeasuresFlow(input);
+export interface ForecastedCloudShadingEvent {
+  time: string;
+  severity: string;
+  transformerId: string;
 }
 
-const suggestStabilityMeasuresPrompt = ai.definePrompt({
-  name: 'suggestStabilityMeasuresPrompt',
-  input: { schema: SuggestStabilityMeasuresInputSchema },
-  output: { schema: SuggestStabilityMeasuresOutputSchema },
-  prompt: `You are an expert grid operator AI assistant focused on maintaining grid stability. Your task is to analyze potential grid instability threats and suggest specific proactive measures, along with Virtual Power Plant (VPP) configuration adjustments, to prevent issues and ensure grid resilience.
+export interface VPPConfiguration {
+  bidirectionalChargingEnabled: boolean;
+  responseThreshold: number;
+  capacityReservedPercent: number;
+  geographicalConcentration?: string;
+}
 
-Analyze the following information:
+export interface SuggestStabilityMeasuresInput {
+  threatDescription: string;
+  currentFrequencyDeviation: number;
+  responseLatency: number;
+  forecastedCloudShadingEvents: ForecastedCloudShadingEvent[];
+  vppConfiguration: VPPConfiguration;
+}
 
-Identified Threat: {{{threatDescription}}}
-Current Grid Frequency Deviation: {{{currentFrequencyDeviation}}} Hz
-System Response Latency: {{{responseLatency}}} ms
+export interface RecommendedVPPAdjustments {
+  bidirectionalChargingEnabled?: boolean;
+  responseThreshold?: number;
+  capacityReservedPercent?: number;
+}
+
+export interface SuggestStabilityMeasuresOutput {
+  suggestedMeasures: string[];
+  recommendedVPPAdjustments: RecommendedVPPAdjustments;
+  explanation: string;
+}
+
+// ────────── Flow ──────────
+
+const SYSTEM_PROMPT = `You are an expert grid operator AI assistant focused on maintaining grid stability. Analyse potential grid instability threats and suggest specific proactive measures, along with Virtual Power Plant (VPP) configuration adjustments, to prevent issues and ensure grid resilience.
+
+You MUST respond with pure JSON matching this schema (no markdown fences):
+{
+  "suggestedMeasures": ["<measure1>", "<measure2>", ...],
+  "recommendedVPPAdjustments": {
+    "bidirectionalChargingEnabled": true|false,   // optional
+    "responseThreshold": <number>,                // optional
+    "capacityReservedPercent": <number>           // optional
+  },
+  "explanation": "<detailed reasoning>"
+}
+Only include a field in recommendedVPPAdjustments if you are suggesting a change.`;
+
+export async function suggestStabilityMeasures(
+  input: SuggestStabilityMeasuresInput
+): Promise<SuggestStabilityMeasuresOutput> {
+  const shadingBlock = input.forecastedCloudShadingEvents.length
+    ? input.forecastedCloudShadingEvents
+        .map((e) => `- Time: ${e.time}, Severity: ${e.severity}, Transformer ID: ${e.transformerId}`)
+        .join('\n')
+    : 'No forecasted cloud shading events.';
+
+  const userPrompt = `Analyse the following information:
+
+Identified Threat: ${input.threatDescription}
+Current Grid Frequency Deviation: ${input.currentFrequencyDeviation} Hz
+System Response Latency: ${input.responseLatency} ms
 
 Forecasted Cloud Shading Events:
-{{#if forecastedCloudShadingEvents}}
-{{#each forecastedCloudShadingEvents}}
-- Time: {{{time}}}, Severity: {{{severity}}}, Transformer ID: {{{transformerId}}}
-{{/each}}
-{{else}}
-No forecasted cloud shading events.
-{{/if}}
+${shadingBlock}
 
 Current VPP Configuration:
-- Bidirectional Charging Enabled: {{{vppConfiguration.bidirectionalChargingEnabled}}}
-- Response Threshold: {{{vppConfiguration.responseThreshold}}} Hz
-- Capacity Reserved: {{{vppConfiguration.capacityReservedPercent}}}%
-{{#if vppConfiguration.geographicalConcentration}}
-- Geographical Concentration: {{{vppConfiguration.geographicalConcentration}}}
-{{/if}}
+- Bidirectional Charging Enabled: ${input.vppConfiguration.bidirectionalChargingEnabled}
+- Response Threshold: ${input.vppConfiguration.responseThreshold} Hz
+- Capacity Reserved: ${input.vppConfiguration.capacityReservedPercent}%
+${input.vppConfiguration.geographicalConcentration ? `- Geographical Concentration: ${input.vppConfiguration.geographicalConcentration}` : ''}
 
 Based on this data, provide:
 1. A list of specific, actionable proactive measures to maintain grid stability.
-2. Recommended adjustments to the VPP configuration. Only suggest changes to 'bidirectionalChargingEnabled', 'responseThreshold', and 'capacityReservedPercent' if necessary. If no change is needed for a specific parameter, do not include it in the adjustments.
-3. A detailed explanation for your suggestions, outlining the reasoning behind each measure and VPP adjustment.
+2. Recommended adjustments to the VPP configuration. Only suggest changes if necessary.
+3. A detailed explanation for your suggestions, outlining the reasoning behind each measure and VPP adjustment.`;
 
-Ensure your output adheres strictly to the provided JSON schema for suggestedMeasures, recommendedVPPAdjustments, and explanation.`,
-});
-
-const suggestStabilityMeasuresFlow = ai.defineFlow(
-  {
-    name: 'suggestStabilityMeasuresFlow',
-    inputSchema: SuggestStabilityMeasuresInputSchema,
-    outputSchema: SuggestStabilityMeasuresOutputSchema,
-  },
-  async (input) => {
-    const { output } = await suggestStabilityMeasuresPrompt(input);
-    return output!;
-  }
-);
+  return chatCompletionJSON<SuggestStabilityMeasuresOutput>([
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: userPrompt },
+  ]);
+}

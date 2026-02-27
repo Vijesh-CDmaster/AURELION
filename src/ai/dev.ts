@@ -1,6 +1,5 @@
-import { config } from 'dotenv';
-config();
-
-import '@/ai/flows/explain-grid-event.ts';
-import '@/ai/flows/identify-grid-threats.ts';
-import '@/ai/flows/suggest-stability-measures-flow.ts';
+/**
+ * DEPRECATED: Genkit dev server is no longer used.
+ * AI flows now use the Featherless API client directly.
+ */
+export {};

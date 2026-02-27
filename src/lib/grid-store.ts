@@ -179,6 +179,17 @@ export interface GridState {
   forecastAlert: { event: string; detail: string; probability: number; leadMinutes: number } | null;
   alerts: Alert[];
 
+  // Analytics chart data
+  attackFrequencyData: { period: string; count: number }[];
+  marlRewardHistory: { epoch: number; reward: number }[];
+  forecastAccuracyHistory: { time: string; accuracy: number }[];
+  deviceLoadHistory: { time: string; ev: number; hvac: number; storage: number }[];
+  vppCapacityHistory: { time: string; capacity: number }[];
+  vppClusterLog: { time: string; cluster: string; action: string }[];
+  systemMode: 'live' | 'simulation' | 'demo';
+  operatorName: string;
+  operatorRole: string;
+
   // NEW engine telemetry
   marlTelemetry: MARLTelemetry;
   defenseTelemetry: DefenseTelemetry;
@@ -216,6 +227,12 @@ export interface GridState {
 
   // Engine-backed event injection
   injectEvent: (type: 'freq-dip' | 'load-spike' | 'vpp-loss' | 'demand-attack', magnitude?: number) => void;
+
+  // Config page actions
+  setSystemMode: (mode: 'live' | 'simulation' | 'demo') => void;
+  resetDefaults: () => void;
+  saveSnapshot: () => void;
+  login: (name: string, role: string) => void;
 
   // DB persistence
   _dbSyncAfterTick: () => void;
@@ -294,6 +311,16 @@ export const useGridStore = create<GridState>((set, get) => ({
   simulationParams: { scenario: 'ev-mass', intensity: 45, affectedNodes: 60, duration: 30 },
   simulationResults: null,
   alerts: [],
+
+  attackFrequencyData: [] as { period: string; count: number }[],
+  marlRewardHistory: [] as { epoch: number; reward: number }[],
+  forecastAccuracyHistory: [] as { time: string; accuracy: number }[],
+  deviceLoadHistory: [] as { time: string; ev: number; hvac: number; storage: number }[],
+  vppCapacityHistory: [] as { time: string; capacity: number }[],
+  vppClusterLog: [] as { time: string; cluster: string; action: string }[],
+  systemMode: 'live' as 'live' | 'simulation' | 'demo',
+  operatorName: '',
+  operatorRole: 'operator',
 
   liveSimStatus: 'idle' as LiveSimStatus,
   liveSimFrames: [] as LiveSimFrame[],
@@ -667,6 +694,41 @@ export const useGridStore = create<GridState>((set, get) => ({
       solarForecast: forecastUpdate.length > 0 ? forecastUpdate : state.solarForecast,
       shadingEvents: shadingUpdate.length > 0 ? shadingUpdate : state.shadingEvents,
 
+      // Analytics rolling history
+      attackFrequencyData: (() => {
+        const d = [...state.attackFrequencyData];
+        const hr = new Date().getHours();
+        const period = `${hr}:00`;
+        const last = d[d.length - 1];
+        if (last && last.period === period) { if (dm.attackDetected) last.count++; }
+        else { d.push({ period, count: dm.attackDetected ? 1 : 0 }); }
+        if (d.length > 24) d.shift();
+        return d;
+      })(),
+      marlRewardHistory: [...state.marlRewardHistory.slice(-99), { epoch: mm.episodeCount, reward: mm.avgReward }],
+      forecastAccuracyHistory: [...state.forecastAccuracyHistory.slice(-59), { time: now, accuracy: clamp(fm.reliabilityScore * 100, 0, 100) }],
+
+      // Device load + VPP capacity rolling history
+      deviceLoadHistory: [...state.deviceLoadHistory.slice(-59), {
+        time: now,
+        ev: ds.evCount > 0 ? +(ds.totalControllableLoadMW * (ds.evCount / total) * 1000).toFixed(1) : 0,
+        hvac: ds.hvacCount > 0 ? +(ds.totalControllableLoadMW * (ds.hvacCount / total) * 1000).toFixed(1) : 0,
+        storage: ds.batteryCount > 0 ? +(ds.totalControllableLoadMW * (ds.batteryCount / total) * 1000).toFixed(1) : 0,
+      }],
+      vppCapacityHistory: [...state.vppCapacityHistory.slice(-59), { time: now, capacity: +Math.abs(mm.totalVPPResponseMW).toFixed(2) }],
+      // Cluster formation log — record status transitions
+      vppClusterLog: (() => {
+        const log = [...state.vppClusterLog];
+        for (const ci of clusterInfos) {
+          const prev = state.agentClusters.find(c => c.name === ci.name);
+          if (prev && prev.status !== ci.status) {
+            log.push({ time: now, cluster: ci.name, action: ci.status === 'active' ? 'joined' : 'left' });
+          }
+        }
+        if (log.length > 50) log.splice(0, log.length - 50);
+        return log;
+      })(),
+
       marlTelemetry, defenseTelemetry, forecastTelemetry,
       skyCameraTelemetry: scm ? {
         framesProcessed: scm.framesProcessed, avgProcessingMs: scm.avgProcessingMs,
@@ -953,4 +1015,43 @@ export const useGridStore = create<GridState>((set, get) => ({
         break;
     }
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Config + auth actions
+  // ════════════════════════════════════════════════════════════════
+  setSystemMode: (mode) => set({ systemMode: mode }),
+
+  resetDefaults: () => set({
+    responseThreshold: 0.05,
+    capacityReserved: 15,
+    criticalWarningLevel: 0.25,
+    detectionSensitivity: 'medium',
+    deceptiveSignalInjection: true,
+    autonomousEscalation: true,
+    forecastHorizon: '30s',
+    skyCamEnabled: true,
+    marlLearningRate: 0.001,
+    marlDiscountFactor: 0.95,
+  }),
+
+  saveSnapshot: () => {
+    // Fire a config save to the DB
+    const s = get();
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: `config-${Date.now()}`,
+        learningRate: s.marlLearningRate,
+        discountFactor: s.marlDiscountFactor,
+        capacityReservedPercent: s.capacityReserved,
+        bidirectionalCharging: s.bidirectionalCharging,
+        autonomousEscalation: s.autonomousEscalation,
+        forecastHorizon: s.forecastHorizon === '10s' ? 10 : s.forecastHorizon === '60s' ? 60 : 30,
+        tickIntervalMs: 2000,
+      }),
+    }).catch(() => {});
+  },
+
+  login: (name, role) => set({ operatorName: name, operatorRole: role }),
 }));

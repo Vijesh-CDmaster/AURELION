@@ -1,7 +1,6 @@
-import {genkit} from 'genkit';
-import {googleAI} from '@genkit-ai/google-genai';
-
-export const ai = genkit({
-  plugins: [googleAI()],
-  model: 'googleai/gemini-2.5-flash',
-});
+/**
+ * DEPRECATED: Genkit has been replaced by the Featherless AI client.
+ * This file is kept to avoid broken imports during transition.
+ * All AI flows now import from '@/ai/featherless' directly.
+ */
+export {};

@@ -62,7 +62,7 @@ const navItems = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { status, attackStatus } = useGridStore()
+  const { status, attackStatus, isLoggedIn, userName, userRole, logout } = useGridStore()
 
   return (
     <SidebarProvider>
@@ -132,9 +132,25 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   </Button>
                 </Link>
               )}
-              <div className="h-8 w-8 rounded-full bg-secondary border border-border flex items-center justify-center">
-                <Bot className="h-4 w-4 text-accent" />
-              </div>
+              {isLoggedIn ? (
+                <div className="flex items-center gap-3">
+                  <div className="text-right hidden md:block">
+                    <div className="text-[10px] font-bold">{userName}</div>
+                    <div className="text-[8px] text-muted-foreground uppercase">{userRole}</div>
+                  </div>
+                  <Link href="/login">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => logout()}>
+                      <LogOut className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <Link href="/login">
+                  <div className="h-8 w-8 rounded-full bg-secondary border border-border flex items-center justify-center">
+                    <Bot className="h-4 w-4 text-accent" />
+                  </div>
+                </Link>
+              )}
             </div>
           </header>
           <div className="p-6 overflow-auto">

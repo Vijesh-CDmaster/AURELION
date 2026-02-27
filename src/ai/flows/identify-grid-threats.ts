@@ -1,97 +1,76 @@
 'use server';
 /**
- * @fileOverview This flow analyzes current grid data and forecasts to identify potential near-term grid stability threats.
+ * @fileOverview Analyzes current grid data and forecasts to identify potential
+ * near-term grid stability threats.
  *
- * - identifyGridThreats - A function that handles the grid threat identification process.
- * - IdentifyGridThreatsInput - The input type for the identifyGridThreats function.
- * - IdentifyGridThreatsOutput - The return type for the identifyGridThreats function.
+ * Uses the Featherless AI (OpenAI-compatible) endpoint.
  */
 
-import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { chatCompletionJSON } from '@/ai/featherless';
 
-const ForecastEventSchema = z.object({
-  type: z
-    .enum(['cloud_shading', 'load_increase', 'frequency_dip', 'other'])
-    .describe('The type of forecast event.'),
-  description: z.string().describe('A detailed description of the event.'),
-  leadTimeMinutes: z
-    .number()
-    .describe('How many minutes until the event is expected to impact the grid.'),
-  impactEstimate: z
-    .string()
-    .describe('Estimated impact on power generation or demand (e.g., "-50MW solar", "+100MW load").'),
-});
+// ────────── Types ──────────
 
-const IdentifiedThreatSchema = z.object({
-  description: z.string().describe('A clear description of the identified threat.'),
-  severity: z
-    .enum(['low', 'medium', 'high', 'critical'])
-    .describe('The severity level of the threat.'),
-  mitigationActions: z
-    .array(z.string())
-    .describe('A list of suggested actions to mitigate the threat.'),
-});
+export interface ForecastEvent {
+  type: 'cloud_shading' | 'load_increase' | 'frequency_dip' | 'other';
+  description: string;
+  leadTimeMinutes: number;
+  impactEstimate: string;
+}
 
-const IdentifyGridThreatsInputSchema = z.object({
-  currentGridStatus: z
-    .string()
-    .describe('A summary of the current grid status, including frequency deviation, load, and generation.'),
-  forecasts: z
-    .array(ForecastEventSchema)
-    .describe('A list of upcoming forecast events, such as cloud-shading or load changes.'),
-});
-export type IdentifyGridThreatsInput = z.infer<typeof IdentifyGridThreatsInputSchema>;
+export interface IdentifiedThreat {
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  mitigationActions: string[];
+}
 
-const IdentifyGridThreatsOutputSchema = z.object({
-  threats: z
-    .array(IdentifiedThreatSchema)
-    .describe('A list of identified near-term grid stability threats.'),
-  overallAssessment: z
-    .string()
-    .describe('An overall assessment of the grid stability based on current data and forecasts.'),
-});
-export type IdentifyGridThreatsOutput = z.infer<typeof IdentifyGridThreatsOutputSchema>;
+export interface IdentifyGridThreatsInput {
+  currentGridStatus: string;
+  forecasts: ForecastEvent[];
+}
+
+export interface IdentifyGridThreatsOutput {
+  threats: IdentifiedThreat[];
+  overallAssessment: string;
+}
+
+// ────────── Flow ──────────
+
+const SYSTEM_PROMPT = `You are an expert grid operator and stability analyst. Analyse the provided current grid data and forecasts to proactively identify near-term grid stability threats and suggest mitigation actions.
+
+You MUST respond with pure JSON matching this schema (no markdown fences):
+{
+  "threats": [
+    {
+      "description": "<threat description>",
+      "severity": "low|medium|high|critical",
+      "mitigationActions": ["<action1>", "<action2>"]
+    }
+  ],
+  "overallAssessment": "<overall stability assessment>"
+}`;
 
 export async function identifyGridThreats(
   input: IdentifyGridThreatsInput
 ): Promise<IdentifyGridThreatsOutput> {
-  return identifyGridThreatsFlow(input);
-}
+  const forecastBlock = input.forecasts.length
+    ? input.forecasts
+        .map(
+          (f) =>
+            `- Type: ${f.type}\n  Description: ${f.description}\n  Lead Time: ${f.leadTimeMinutes} minutes\n  Impact Estimate: ${f.impactEstimate}`
+        )
+        .join('\n')
+    : 'No significant forecast events.';
 
-const prompt = ai.definePrompt({
-  name: 'identifyGridThreatsPrompt',
-  input: { schema: IdentifyGridThreatsInputSchema },
-  output: { schema: IdentifyGridThreatsOutputSchema },
-  prompt: `You are an expert grid operator and stability analyst. Your task is to analyze the provided current grid data and forecasts to proactively identify any near-term grid stability threats and suggest mitigation actions.
-
-### Current Grid Status:
-{{{currentGridStatus}}}
+  const userPrompt = `### Current Grid Status:
+${input.currentGridStatus}
 
 ### Forecast Events:
-{{#if forecasts}}
-{{#each forecasts}}
-- Type: {{{type}}}
-  Description: {{{description}}}
-  Lead Time: {{{leadTimeMinutes}}} minutes
-  Impact Estimate: {{{impactEstimate}}}
-{{/each}}
-{{else}}
-No significant forecast events.
-{{/if}}
+${forecastBlock}
 
-Based on the above information, identify any potential grid stability threats. For each threat, provide a description, its severity (low, medium, high, critical), and concrete mitigation actions. Finally, provide an overall assessment of the grid's stability.
-`,
-});
+Based on the above information, identify any potential grid stability threats. For each threat, provide a description, its severity (low, medium, high, critical), and concrete mitigation actions. Finally, provide an overall assessment of the grid's stability.`;
 
-const identifyGridThreatsFlow = ai.defineFlow(
-  {
-    name: 'identifyGridThreatsFlow',
-    inputSchema: IdentifyGridThreatsInputSchema,
-    outputSchema: IdentifyGridThreatsOutputSchema,
-  },
-  async (input) => {
-    const { output } = await prompt(input);
-    return output!;
-  }
-);
+  return chatCompletionJSON<IdentifyGridThreatsOutput>([
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: userPrompt },
+  ]);
+}
