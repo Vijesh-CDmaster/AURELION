@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export default function DevicesPage() {
-  const { devices, initializeSystemData } = useGridStore()
+  const { devices, deviceMix, assetsReachable, onlineDevices, offlineDevices, controllableLoad, initializeSystemData } = useGridStore()
 
   useEffect(() => {
     initializeSystemData()
@@ -46,24 +46,24 @@ export default function DevicesPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2"><Car className="h-3 w-3 text-primary" /> EVs</div>
-                <span className="font-bold">42%</span>
+                <span className="font-bold">{deviceMix.evPercent}%</span>
               </div>
               <div className="w-full bg-muted rounded-full h-1">
-                <div className="bg-primary h-full w-[42%]" />
+                <div className="bg-primary h-full" style={{ width: `${deviceMix.evPercent}%` }} />
               </div>
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2"><Thermometer className="h-3 w-3 text-accent" /> HVAC</div>
-                <span className="font-bold">35%</span>
+                <span className="font-bold">{deviceMix.hvacPercent}%</span>
               </div>
               <div className="w-full bg-muted rounded-full h-1">
-                <div className="bg-accent h-full w-[35%]" />
+                <div className="bg-accent h-full" style={{ width: `${deviceMix.hvacPercent}%` }} />
               </div>
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2"><Battery className="h-3 w-3 text-emerald-400" /> Storage</div>
-                <span className="font-bold">23%</span>
+                <span className="font-bold">{deviceMix.storagePercent}%</span>
               </div>
               <div className="w-full bg-muted rounded-full h-1">
-                <div className="bg-emerald-400 h-full w-[23%]" />
+                <div className="bg-emerald-400 h-full" style={{ width: `${deviceMix.storagePercent}%` }} />
               </div>
             </CardContent>
           </Card>
@@ -74,15 +74,15 @@ export default function DevicesPage() {
               <Wifi className="h-4 w-4 text-emerald-400" />
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center py-4">
-              <div className="text-4xl font-headline font-black text-emerald-400">98.2%</div>
+              <div className="text-4xl font-headline font-black text-emerald-400">{assetsReachable.toFixed(1)}%</div>
               <div className="text-[10px] text-muted-foreground mt-1 uppercase font-bold">Assets Reachable</div>
               <div className="mt-4 flex gap-4">
                 <div className="text-center">
-                  <div className="text-xs font-bold">10,064</div>
+                  <div className="text-xs font-bold">{onlineDevices.toLocaleString()}</div>
                   <div className="text-[8px] text-muted-foreground uppercase">Online</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xs font-bold text-red-400">184</div>
+                  <div className="text-xs font-bold text-red-400">{offlineDevices.toLocaleString()}</div>
                   <div className="text-[8px] text-muted-foreground uppercase">Offline</div>
                 </div>
               </div>
@@ -95,7 +95,7 @@ export default function DevicesPage() {
               <Zap className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center py-4">
-              <div className="text-4xl font-headline font-black text-primary">+4.2<span className="text-lg">MW</span></div>
+              <div className="text-4xl font-headline font-black text-primary">{controllableLoad >= 0 ? '+' : ''}{controllableLoad.toFixed(1)}<span className="text-lg">MW</span></div>
               <div className="text-[10px] text-muted-foreground mt-1 uppercase font-bold">Controllable Load</div>
               <Button variant="link" className="text-accent text-[10px] h-auto p-0 mt-4" suppressHydrationWarning>VIEW CLUSTER BREAKDOWN</Button>
             </CardContent>

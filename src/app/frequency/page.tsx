@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
 export default function FrequencyMonitorPage() {
-  const { frequency, status, initializeSystemData } = useGridStore()
+  const { frequency, status, dfdt, latency, virtualInertia, stabilityZones, initializeSystemData } = useGridStore()
 
   useEffect(() => {
     initializeSystemData()
@@ -51,7 +51,7 @@ export default function FrequencyMonitorPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">df/dt (Rate of Change)</CardDescription>
-              <CardTitle className="text-4xl font-headline font-black">0.002</CardTitle>
+              <CardTitle className="text-4xl font-headline font-black">{dfdt.toFixed(4)}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">Hz per second</div>
@@ -68,14 +68,14 @@ export default function FrequencyMonitorPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-xs text-muted-foreground">Inertia: STABLE</div>
+              <div className="text-xs text-muted-foreground">Inertia: {virtualInertia > 0.8 ? 'STABLE' : virtualInertia > 0.5 ? 'MODERATE' : 'LOW'}</div>
             </CardContent>
           </Card>
 
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Latency</CardDescription>
-              <CardTitle className="text-4xl font-headline font-black text-accent">42ms</CardTitle>
+              <CardTitle className="text-4xl font-headline font-black text-accent">{Math.round(latency)}ms</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">VPP Response delay</div>
@@ -95,18 +95,13 @@ export default function FrequencyMonitorPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                { label: "Zone Alpha (North)", freq: "49.998", load: "High" },
-                { label: "Zone Beta (West)", freq: "50.002", load: "Normal" },
-                { label: "Zone Gamma (South)", freq: "49.995", load: "Low" },
-                { label: "Zone Delta (East)", freq: "50.010", load: "Surplus" },
-              ].map((zone, i) => (
+              {stabilityZones.map((zone, i) => (
                 <div key={i} className="p-3 rounded-lg bg-muted/30 border border-border flex items-center justify-between">
                   <div>
                     <div className="text-xs font-bold">{zone.label}</div>
                     <div className="text-[10px] text-muted-foreground">Load: {zone.load}</div>
                   </div>
-                  <div className="text-xs font-mono font-bold text-primary">{zone.freq} Hz</div>
+                  <div className="text-xs font-mono font-bold text-primary">{zone.freq.toFixed(3)} Hz</div>
                 </div>
               ))}
             </CardContent>

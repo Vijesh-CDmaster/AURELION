@@ -8,7 +8,7 @@ import { Cloud, MapPin } from "lucide-react"
 import { useGridStore } from "@/lib/grid-store"
 
 export default function ForecastPage() {
-  const { shadingEvents, initializeSystemData } = useGridStore()
+  const { shadingEvents, clusterCoverage, initializeSystemData } = useGridStore()
 
   useEffect(() => {
     initializeSystemData()
@@ -62,20 +62,17 @@ export default function ForecastPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex justify-between text-xs">
-                    <span>West Sector (74 Assets)</span>
-                    <span className="font-bold">94% Stability</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                    <div className="bg-accent h-full w-[94%]" />
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span>Central Hub (122 Assets)</span>
-                    <span className="font-bold">88% Stability</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                    <div className="bg-accent h-full w-[88%]" />
-                  </div>
+                  {clusterCoverage.map((cluster, i) => (
+                    <div key={i}>
+                      <div className="flex justify-between text-xs">
+                        <span>{cluster.name} ({cluster.assets} Assets)</span>
+                        <span className="font-bold">{cluster.stability.toFixed(0)}% Stability</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
+                        <div className="bg-accent h-full" style={{ width: `${cluster.stability}%` }} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
