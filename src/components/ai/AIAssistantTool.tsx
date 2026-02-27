@@ -19,21 +19,36 @@ export function AIAssistantTool() {
   const handleAnalyze = async () => {
     setLoading(true)
     try {
+      // Build dynamic forecasts from store shading events
+      const dynamicForecasts = grid.shadingEvents.slice(0, 3).map(ev => ({
+        type: 'cloud_shading' as const,
+        description: `${ev.transformer} Cluster`,
+        leadTimeMinutes: parseInt(ev.duration) || 12,
+        impactEstimate: `${ev.severity === 'High' ? '-600kW' : ev.severity === 'Medium' ? '-400kW' : '-200kW'} solar`
+      }))
+
       // Step 1: Identify threats
       const threatData = await identifyGridThreats({
-        currentGridStatus: `Frequency: ${grid.frequency}Hz, Load: ${grid.loadDemand}MW, VPP: ${grid.vppEnabled ? 'Active' : 'Standby'}`,
-        forecasts: [
-          { type: 'cloud_shading', description: 'Transformer T-42 Cluster', leadTimeMinutes: 12, impactEstimate: '-400kW solar' }
+        currentGridStatus: `Frequency: ${grid.frequency.toFixed(3)}Hz, Load: ${grid.loadDemand}MW, Solar: ${grid.solarGeneration}kW, VPP: ${grid.vppEnabled ? 'Active' : 'Standby'}, Latency: ${Math.round(grid.latency)}ms, Status: ${grid.status}`,
+        forecasts: dynamicForecasts.length > 0 ? dynamicForecasts : [
+          { type: 'other', description: 'No immediate shading events', leadTimeMinutes: 0, impactEstimate: 'Nominal' }
         ]
       })
+
+      // Build dynamic shading events for measures
+      const dynamicShadingEvents = grid.shadingEvents.slice(0, 3).map(ev => ({
+        time: ev.time,
+        severity: ev.severity.toLowerCase() as 'low' | 'medium' | 'high',
+        transformerId: ev.transformer
+      }))
 
       // Step 2: Get measures
       const measures = await suggestStabilityMeasures({
         threatDescription: threatData.threats[0]?.description || "Baseline Grid Drift",
         currentFrequencyDeviation: Math.abs(50 - grid.frequency),
         responseLatency: grid.latency,
-        forecastedCloudShadingEvents: [
-          { time: '13:12', severity: 'medium', transformerId: 'T-42' }
+        forecastedCloudShadingEvents: dynamicShadingEvents.length > 0 ? dynamicShadingEvents : [
+          { time: 'N/A', severity: 'low', transformerId: 'N/A' }
         ],
         vppConfiguration: {
           bidirectionalChargingEnabled: grid.bidirectionalCharging,

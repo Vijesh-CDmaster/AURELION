@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useGridStore } from "@/lib/grid-store"
 import { BarChart3, TrendingUp, Download, Calendar, Zap, ShieldCheck, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { 
   Bar, 
   BarChart, 
