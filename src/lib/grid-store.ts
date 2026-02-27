@@ -1,137 +1,118 @@
 import { create } from 'zustand';
+import {
+  initEngines,
+  tick as simTick,
+  getMARLEngine,
+  getPhysicsEngine,
+  getForecastEngine,
+  getDefenseEngine,
+  getSkyCameraEngine,
+  setSkyCamEnabled,
+  triggerAttack as simTriggerAttack,
+  stopAttack as simStopAttack,
+  runStressTest,
+  injectFrequencyDip,
+  injectLoadSpike,
+} from './engines/simulation-engine';
+import { dbTickHook, loadLatestSnapshot } from './db-sync';
 
-// ─── DB sync helpers (fire-and-forget from client) ────────────────────────
-const api = (path: string) => `/api/grid/${path}`;
-
-async function dbGet<T = any>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(api(path));
-    if (!res.ok) return null;
-    return res.json();
-  } catch { return null; }
-}
-
-async function dbPost<T = any>(path: string, body: any): Promise<T | null> {
-  try {
-    const res = await fetch(api(path), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch { return null; }
-}
-
-async function dbPut<T = any>(path: string, body: any): Promise<T | null> {
-  try {
-    const res = await fetch(api(path), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch { return null; }
-}
-
-// Snapshot counter — save a snapshot every N ticks (~every 30s at 2s interval)
-let tickCounter = 0;
-const SNAPSHOT_INTERVAL = 15;
+// ── Re-used UI types (backward-compatible with all pages) ────────────
 
 export type AttackStatus = 'none' | 'detected' | 'under-defense';
-export type GridStatus = 'stable' | 'warning' | 'critical';
+export type GridStatus   = 'stable' | 'warning' | 'critical';
 export type DetectionSensitivity = 'low' | 'medium' | 'high';
 export type ForecastHorizon = '10s' | '30s' | '60s';
 
 export interface Alert {
-  id: string;
-  time: string;
-  type: string;
+  id: string; time: string; type: string;
   severity: 'info' | 'warning' | 'critical' | 'attack';
-  message: string;
-  status: 'active' | 'resolved';
+  message: string; status: 'active' | 'resolved';
 }
 
 export interface AgentCluster {
-  name: string;
-  count: number;
-  response: number;
-  status: 'active' | 'idle';
+  name: string; count: number; response: number; status: 'active' | 'idle';
+  dominantAction?: string; avgReward?: number;
 }
 
 export interface Device {
-  id: string;
-  type: string;
-  status: 'online' | 'offline' | 'responding';
-  load: string;
-  cluster: string;
-  latency: string;
+  id: string; type: string; status: 'online' | 'offline' | 'responding';
+  load: string; cluster: string; latency: string;
 }
 
-export interface PerformanceMetric {
-  day: string;
-  stability: number;
-  savings: number;
-  attacks: number;
-}
-
-export interface ForecastPoint {
-  time: string;
-  generation: number;
-  shading: 'none' | 'medium' | 'high';
-}
-
-export interface ShadingEvent {
-  time: string;
-  transformer: string;
-  severity: string;
-  duration: string;
-}
-
-export interface SimulationRecord {
-  id: string;
-  scenario: string;
-  date: string;
-  stability: string;
-  outcome: string;
-}
-
-export interface DefenseLogEntry {
-  time: string;
-  action: string;
-  target: string;
-  severity: 'info' | 'warning' | 'critical';
-}
-
-export interface StabilityZone {
-  label: string;
-  freq: number;
-  load: string;
-}
-
-export interface ClusterCoverage {
-  name: string;
-  assets: number;
-  stability: number;
-}
-
-export interface SimulationParams {
-  scenario: string;
-  intensity: number;
-  affectedNodes: number;
-  duration: number;
-}
+export interface PerformanceMetric { day: string; stability: number; savings: number; attacks: number; }
+export interface ForecastPoint { time: string; generation: number; shading: 'none' | 'medium' | 'high'; }
+export interface ShadingEvent { time: string; transformer: string; severity: string; duration: string; }
+export interface SimulationRecord { id: string; scenario: string; date: string; stability: string; outcome: string; }
+export interface DefenseLogEntry { time: string; action: string; target: string; severity: 'info' | 'warning' | 'critical'; }
+export interface StabilityZone { label: string; freq: number; load: string; }
+export interface ClusterCoverage { name: string; assets: number; stability: number; }
+export interface SimulationParams { scenario: string; intensity: number; affectedNodes: number; duration: number; }
 
 export interface SimulationResults {
-  maxDeviation: number;
-  recoveryTime: number;
-  energyCurtailed: number;
-  currentFrequency: number;
+  maxDeviation: number; recoveryTime: number; energyCurtailed: number;
+  currentFrequency: number; avgVPPResponse?: number; attackDetected?: boolean;
 }
 
+export interface LiveSimFrame {
+  tick: number;
+  frequency: number;
+  dfdt: number;
+  vppMW: number;
+  loadMW: number;
+  genMW: number;
+  attackDetected: boolean;
+  status: GridStatus;
+}
+
+export type LiveSimStatus = 'idle' | 'running' | 'paused' | 'complete';
+
+// ── NEW: Engine telemetry types ──────────────────────────────────────
+
+export interface MARLTelemetry {
+  convergenceRate: number;
+  avgReward: number;
+  rewardHistory: number[];
+  episodeCount: number;
+  qTableStats: { avgQ: number; maxQ: number; minQ: number; nonZeroPercent: number };
+  frequencyTrackingError: number;
+}
+
+export interface DefenseTelemetry {
+  spectralAnomaly: number;
+  cusumStatistic: number;
+  cusumThreshold: number;
+  synchronizationIndex: number;
+  entropyScore: number;
+  loadSpectrum: { frequency: number; magnitude: number }[];
+  detectionLatencyMs: number;
+}
+
+export interface ForecastTelemetry {
+  currentIrradiance: number;
+  clearSkyIrradiance: number;
+  crps: number;
+  pinballLoss: number;
+  reliabilityScore: number;
+  forecastBands: { timeOffset: number; predicted: number; lower10: number; lower25: number; upper75: number; upper90: number; shadingProb: number }[];
+  clouds: { id: string; x: number; y: number; opacity: number; size: number }[];
+  transformers: { id: string; name: string; shadingFactor: number; currentGenMW: number; predicted30s: number }[];
+}
+
+export interface SkyCameraTelemetry {
+  framesProcessed: number;
+  avgProcessingMs: number;
+  cloudFraction: number;
+  blobCount: number;
+  avgOpticalDepth: number;
+  avgCloudVelocity: number;
+  rampAlert: boolean;
+  rampMagnitude: number;
+  rampLeadTimeSec: number;
+}
+
+// ── Full store interface ─────────────────────────────────────────────
+
 export interface GridState {
-  // Core Metrics
   frequency: number;
   frequencyHistory: { time: string; value: number }[];
   latency: number;
@@ -141,7 +122,6 @@ export interface GridState {
   energySaved: number;
   dfdt: number;
 
-  // Collections
   agentClusters: AgentCluster[];
   devices: Device[];
   performanceData: PerformanceMetric[];
@@ -152,12 +132,10 @@ export interface GridState {
   stabilityZones: StabilityZone[];
   clusterCoverage: ClusterCoverage[];
 
-  // Grid Status
   status: GridStatus;
   activeAgents: number;
   agentSyncRate: number;
 
-  // Adversarial Defense
   attackStatus: AttackStatus;
   phaseCoherence: number;
   attackIntensity: number;
@@ -167,20 +145,17 @@ export interface GridState {
   recoveryEfficiency: number;
   attacksMitigated: number;
 
-  // Agent Metrics
   avgAgentResponse: number;
   virtualInertia: number;
   rewardWeightStatus: string;
   systemCapacity: number;
 
-  // Device Metrics
   deviceMix: { evPercent: number; hvacPercent: number; storagePercent: number };
   assetsReachable: number;
   onlineDevices: number;
   offlineDevices: number;
   controllableLoad: number;
 
-  // Configuration
   vppEnabled: boolean;
   bidirectionalCharging: boolean;
   responseThreshold: number;
@@ -195,39 +170,47 @@ export interface GridState {
   marlLearningRate: number;
   marlDiscountFactor: number;
 
-  // Data source status
   dataSources: { name: string; status: 'connected' | 'disconnected' | 'error' }[];
 
-  // Simulation
   simulationParams: SimulationParams;
   simulationResults: SimulationResults | null;
 
-  // Coherence chart data
   coherenceData: { time: number; value: number; attack: number }[];
-
-  // Forecast alert
   forecastAlert: { event: string; detail: string; probability: number; leadMinutes: number } | null;
-
-  // Alerts
   alerts: Alert[];
 
-  // Enhanced features
-  systemMode: 'live' | 'simulation' | 'demo';
-  forecastAccuracy: number;
-  forecastUncertainty: number;
-  falseCalmDetected: boolean;
-  forecastAccuracyHistory: { time: string; accuracy: number }[];
-  marlRewardHistory: { episode: number; reward: number }[];
+  // Analytics chart data
   attackFrequencyData: { day: string; attacks: number }[];
+  marlRewardHistory: { episode: number; reward: number }[];
+  forecastAccuracyHistory: { time: string; accuracy: number }[];
   recoveryProgress: number;
   deceptiveSignalStrength: number;
-  vppCapacityHistory: { time: string; capacity: number; dispatched: number }[];
-  vppClusterLog: { time: string; action: string; cluster: string }[];
   agentResponseTimeline: { time: string; responseMs: number }[];
   deviceLoadHistory: { time: string; ev: number; hvac: number; storage: number }[];
+  vppCapacityHistory: { time: string; capacity: number; dispatched: number }[];
+  vppClusterLog: { time: string; cluster: string; action: string }[];
+  systemMode: 'live' | 'simulation' | 'demo';
+  operatorName: string;
+  operatorRole: string;
   userRole: string;
   userName: string;
   isLoggedIn: boolean;
+  forecastAccuracy: number;
+  forecastUncertainty: number;
+  falseCalmDetected: boolean;
+
+  // NEW engine telemetry
+  marlTelemetry: MARLTelemetry;
+  defenseTelemetry: DefenseTelemetry;
+  forecastTelemetry: ForecastTelemetry;
+  skyCameraTelemetry: SkyCameraTelemetry;
+
+  // Live simulation state
+  liveSimStatus: LiveSimStatus;
+  liveSimFrames: LiveSimFrame[];
+  liveSimTick: number;
+  liveSimTotalTicks: number;
+  liveSimTimerId: ReturnType<typeof setInterval> | null;
 
   // Actions
   updateFrequency: (val: number) => void;
@@ -243,10 +226,6 @@ export interface GridState {
   runSimulation: () => void;
   completeSimulation: () => void;
   addDefenseLogEntry: (entry: DefenseLogEntry) => void;
-  setSystemMode: (mode: 'live' | 'simulation' | 'demo') => void;
-  login: (name: string, role: string) => void;
-  logout: () => void;
-  resetDefaults: () => void;
 
   // FastAPI server data
   updateFromServer: (data: any) => void;
@@ -255,18 +234,40 @@ export interface GridState {
   // DB sync
   dbReady: boolean;
   loadFromDB: () => Promise<void>;
+
+  // Live simulation actions
+  startLiveSimulation: () => void;
+  pauseLiveSimulation: () => void;
+  resumeLiveSimulation: () => void;
+  stopLiveSimulation: () => void;
+  _liveSimStep: () => void;
+
+  // Engine-backed event injection
+  injectEvent: (type: 'freq-dip' | 'load-spike' | 'vpp-loss' | 'demand-attack', magnitude?: number) => void;
+
+  // Config page actions
+  setSystemMode: (mode: 'live' | 'simulation' | 'demo') => void;
+  resetDefaults: () => void;
   saveSnapshot: () => void;
+  login: (name: string, role: string) => void;
+  logout: () => void;
+
+  // DB persistence
+  _dbSyncAfterTick: () => void;
 }
 
-// Helper: generate random float in range
-const rand = (min: number, max: number) => Math.random() * (max - min) + min;
-const randInt = (min: number, max: number) => Math.floor(rand(min, max));
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+// ── Helpers ──────────────────────────────────────────────────────────
+
+const rand  = (a: number, b: number) => Math.random() * (b - a) + a;
+const randInt = (a: number, b: number) => Math.floor(rand(a, b));
 const ts = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// ── Store creation ───────────────────────────────────────────────────
 
 export const useGridStore = create<GridState>((set, get) => ({
-  // Core — all start empty/zero, filled by initializeSystemData + tick
-  frequency: 50.00,
+  // ─── Default values ──────────────────────────────────────────
+  frequency: 50.0,
   frequencyHistory: [],
   latency: 0,
   vppResponse: 0,
@@ -278,7 +279,6 @@ export const useGridStore = create<GridState>((set, get) => ({
   activeAgents: 0,
   agentSyncRate: 0,
 
-  // Adversarial Defense
   attackStatus: 'none',
   phaseCoherence: 0,
   attackIntensity: 0,
@@ -288,20 +288,17 @@ export const useGridStore = create<GridState>((set, get) => ({
   recoveryEfficiency: 0,
   attacksMitigated: 0,
 
-  // Agent metrics
   avgAgentResponse: 0,
   virtualInertia: 0,
   rewardWeightStatus: 'INITIALIZING',
   systemCapacity: 0,
 
-  // Device metrics
   deviceMix: { evPercent: 0, hvacPercent: 0, storagePercent: 0 },
   assetsReachable: 0,
   onlineDevices: 0,
   offlineDevices: 0,
   controllableLoad: 0,
 
-  // Collections — start empty
   agentClusters: [],
   devices: [],
   performanceData: [],
@@ -314,7 +311,6 @@ export const useGridStore = create<GridState>((set, get) => ({
   coherenceData: [],
   forecastAlert: null,
 
-  // Configuration
   vppEnabled: true,
   bidirectionalCharging: true,
   responseThreshold: 0.05,
@@ -330,26 +326,25 @@ export const useGridStore = create<GridState>((set, get) => ({
   marlDiscountFactor: 0.95,
   dataSources: [],
 
-  // Simulation
   simulationParams: { scenario: 'ev-mass', intensity: 45, affectedNodes: 60, duration: 30 },
   simulationResults: null,
-
   alerts: [],
 
-  // Enhanced features
-  systemMode: 'live',
-  forecastAccuracy: 0,
-  forecastUncertainty: 0,
+  attackFrequencyData: [] as { day: string; attacks: number }[],
+  marlRewardHistory: [] as { episode: number; reward: number }[],
+  forecastAccuracyHistory: [] as { time: string; accuracy: number }[],
+  deviceLoadHistory: [] as { time: string; ev: number; hvac: number; storage: number }[],
+  vppCapacityHistory: [] as { time: string; capacity: number; dispatched: number }[],
+  vppClusterLog: [] as { time: string; cluster: string; action: string }[],
+  systemMode: 'live' as 'live' | 'simulation' | 'demo',
+  operatorName: '',
+  operatorRole: 'operator',
+  forecastAccuracy: 90,
+  forecastUncertainty: 8,
   falseCalmDetected: false,
-  forecastAccuracyHistory: [],
-  marlRewardHistory: [],
-  attackFrequencyData: [],
   recoveryProgress: 0,
   deceptiveSignalStrength: 0,
-  vppCapacityHistory: [],
-  vppClusterLog: [],
-  agentResponseTimeline: [],
-  deviceLoadHistory: [],
+  agentResponseTimeline: [] as { time: string; responseMs: number }[],
   userRole: '',
   userName: '',
   isLoggedIn: false,
@@ -360,148 +355,133 @@ export const useGridStore = create<GridState>((set, get) => ({
   // DB sync
   dbReady: false,
 
-  initializeSystemData: () => {
-    const state = get();
-    if (state.frequencyHistory.length > 0) return;
+  liveSimStatus: 'idle' as LiveSimStatus,
+  liveSimFrames: [] as LiveSimFrame[],
+  liveSimTick: 0,
+  liveSimTotalTicks: 0,
+  liveSimTimerId: null as ReturnType<typeof setInterval> | null,
 
-    // Generate local data first (synchronous), then overlay DB data
-    set((state) => {
+  marlTelemetry: { convergenceRate: 0, avgReward: 0, rewardHistory: [], episodeCount: 0, qTableStats: { avgQ: 0, maxQ: 0, minQ: 0, nonZeroPercent: 0 }, frequencyTrackingError: 0 },
+  defenseTelemetry: { spectralAnomaly: 0, cusumStatistic: 0, cusumThreshold: 15, synchronizationIndex: 0, entropyScore: 1, loadSpectrum: [], detectionLatencyMs: 0 },
+  forecastTelemetry: { currentIrradiance: 0, clearSkyIrradiance: 0, crps: 0, pinballLoss: 0, reliabilityScore: 0.85, forecastBands: [], clouds: [], transformers: [] },
+  skyCameraTelemetry: { framesProcessed: 0, avgProcessingMs: 0, cloudFraction: 0, blobCount: 0, avgOpticalDepth: 0, avgCloudVelocity: 0, rampAlert: false, rampMagnitude: 0, rampLeadTimeSec: 0 },
+
+  // ════════════════════════════════════════════════════════════════
+  // initializeSystemData — boots all four engines
+  // ════════════════════════════════════════════════════════════════
+  initializeSystemData: () => set((state) => {
     if (state.frequencyHistory.length > 0) return state;
 
+    initEngines({ learningRate: state.marlLearningRate, discountFactor: state.marlDiscountFactor });
+
+    // Async: try restoring from latest DB snapshot (fire-and-forget)
+    loadLatestSnapshot().then(({ snapshot }) => {
+      if (snapshot && snapshot.agents && snapshot.agents.length > 0) {
+        const ml = getMARLEngine();
+        if (ml) {
+          const ok = ml.restoreFromSnapshot(snapshot.agents);
+          if (ok) {
+            console.log(`[GridStore] Restored training from snapshot "${snapshot.snapshotId}" (episode ${snapshot.episodeCount})`);
+          }
+        }
+      }
+    }).catch(() => { /* non-fatal */ });
+
+    const ml  = getMARLEngine()!;
+    const fc  = getForecastEngine()!;
     const now = new Date();
 
-    // Generate initial frequency history with real timestamps
+    // Seed frequency history
     const freqHistory = Array.from({ length: 60 }, (_, i) => ({
       time: new Date(now.getTime() - (60 - i) * 2000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       value: 50.00 + (Math.random() * 0.04 - 0.02),
     }));
 
-    // Dynamic agent clusters
-    const clusterNames = ["Urban Residential", "Industrial Zone", "South Sector PV", "V2G Fleet Hub", "Commercial District", "Rural Solar Farm"];
-    const numClusters = randInt(3, 6);
-    const clusters: AgentCluster[] = clusterNames.slice(0, numClusters).map(name => ({
-      name,
-      count: randInt(100, 5000),
-      response: randInt(85, 100),
-      status: (Math.random() > 0.2 ? 'active' : 'idle') as 'active' | 'idle',
+    // Clusters from MARL engine
+    const clusterInfos = ml.getClusterInfo();
+    const clusters: AgentCluster[] = clusterInfos.map(ci => ({
+      name: ci.name, count: ci.householdCount,
+      response: Math.round(rand(88, 100)), status: ci.status,
+      dominantAction: ci.dominantAction, avgReward: ci.avgReward,
     }));
 
-    // Dynamic devices
+    // Device list - representative sample from MARL devices
     const deviceTypes = ['EV Charger', 'HVAC', 'Home Battery', 'Solar Inverter', 'Smart Meter'];
-    const clusterLabels = ['Cluster A', 'Cluster B', 'Cluster C', 'Cluster D'];
-    const numDevices = randInt(6, 15);
-    const devicesList: Device[] = Array.from({ length: numDevices }, () => {
+    const clusterLabels = clusterInfos.map(c => c.name);
+    const devicesList: Device[] = Array.from({ length: 12 }, () => {
       const type = deviceTypes[randInt(0, deviceTypes.length)];
-      const statusRoll = Math.random();
-      const devStatus = statusRoll > 0.15 ? 'online' : statusRoll > 0.05 ? 'responding' : 'offline';
-      const loadVal = devStatus === 'offline' ? 0 : rand(-3, 8);
+      const sr = Math.random();
+      const st = sr > 0.15 ? 'online' : sr > 0.05 ? 'responding' : 'offline';
+      const lv = st === 'offline' ? 0 : rand(-3, 8);
       return {
         id: `${type.substring(0, 2).toUpperCase()}-${randInt(100, 999)}`,
-        type,
-        status: devStatus as Device['status'],
-        load: `${loadVal >= 0 ? '+' : ''}${loadVal.toFixed(1)}kW`,
+        type, status: st as Device['status'],
+        load: `${lv >= 0 ? '+' : ''}${lv.toFixed(1)}kW`,
         cluster: clusterLabels[randInt(0, clusterLabels.length)],
-        latency: devStatus === 'offline' ? 'N/A' : `${randInt(5, 80)}ms`,
+        latency: st === 'offline' ? 'N/A' : `${randInt(5, 80)}ms`,
       };
     });
 
     // Performance data
-    const perfDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const perfData: PerformanceMetric[] = perfDays.map(day => ({
-      day,
-      stability: rand(90, 99.5),
-      savings: rand(600, 1800),
+    const perfData: PerformanceMetric[] = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => ({
+      day, stability: rand(90, 99.5), savings: rand(600, 1800),
       attacks: Math.random() > 0.6 ? randInt(0, 6) : 0,
     }));
 
-    // Solar forecast
+    // Solar forecast from engine
+    const fm = fc.step();
     const forecastPoints: ForecastPoint[] = Array.from({ length: 10 }, (_, i) => {
-      const hour = 8 + i;
+      const tr = fm.transformers[i % fm.transformers.length];
       return {
-        time: `${hour}:00`,
-        generation: rand(500, 5000),
-        shading: (Math.random() > 0.8 ? 'high' : Math.random() > 0.5 ? 'medium' : 'none') as ForecastPoint['shading'],
+        time: `${8 + i}:00`,
+        generation: tr ? Math.round(tr.currentGeneration) : Math.round(rand(500, 5000)),
+        shading: (tr && tr.shadingFactor > 0.5 ? 'high' : tr && tr.shadingFactor > 0.2 ? 'medium' : 'none') as ForecastPoint['shading'],
       };
     });
 
-    // Shading events
-    const numShadingEvents = randInt(2, 6);
-    const events: ShadingEvent[] = Array.from({ length: numShadingEvents }, () => ({
-      time: `${randInt(10, 17)}:${String(randInt(0, 59)).padStart(2, '0')}`,
-      transformer: `T-${randInt(10, 99)}`,
-      severity: ['Low', 'Medium', 'High'][randInt(0, 3)],
-      duration: `${randInt(5, 25)}m`,
+    const shadingEvs: ShadingEvent[] = fm.shadingEvents.length > 0
+      ? fm.shadingEvents.map(e => ({
+          time: new Date(Date.now() + e.leadTimeSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          transformer: e.transformerName, severity: e.severity.charAt(0).toUpperCase() + e.severity.slice(1),
+          duration: `${Math.round(e.durationSec / 60)}m`,
+        }))
+      : [{ time: 'N/A', transformer: 'T-42', severity: 'Low', duration: '5m' }];
+
+    const zones: StabilityZone[] = ['Zone Alpha (North)', 'Zone Beta (West)', 'Zone Gamma (South)', 'Zone Delta (East)'].map(label => ({
+      label, freq: 50 + rand(-0.015, 0.015), load: ['Low', 'Normal', 'High', 'Surplus'][randInt(0, 4)],
     }));
 
-    // Stability zones
-    const zoneNames = ["Zone Alpha (North)", "Zone Beta (West)", "Zone Gamma (South)", "Zone Delta (East)"];
-    const loadLevels = ["Low", "Normal", "High", "Surplus"];
-    const zones: StabilityZone[] = zoneNames.map((label) => ({
-      label,
-      freq: 50 + rand(-0.015, 0.015),
-      load: loadLevels[randInt(0, 4)],
+    const coverage: ClusterCoverage[] = fm.transformers.slice(0, 3).map(t => ({
+      name: t.name, assets: randInt(50, 200), stability: rand(80, 99),
     }));
 
-    // Cluster coverage
-    const coverageClusters: ClusterCoverage[] = [
-      { name: "West Sector", assets: randInt(50, 150), stability: rand(80, 99) },
-      { name: "Central Hub", assets: randInt(80, 200), stability: rand(80, 99) },
-      { name: "East Grid", assets: randInt(40, 120), stability: rand(85, 99) },
-    ];
+    const coherence = Array.from({ length: 20 }, (_, i) => ({ time: i, value: rand(0.05, 0.25), attack: 0 }));
 
-    // Coherence data
-    const coherence = Array.from({ length: 20 }, (_, i) => ({
-      time: i,
-      value: rand(0.05, 0.25),
-      attack: 0,
-    }));
+    const ds = ml.getDeviceStats();
+    const total = ds.totalDevices || 1;
+    const evPct = Math.round((ds.evCount / total) * 100);
+    const hvacPct = Math.round((ds.hvacCount / total) * 100);
 
-    // Defense metrics
-    const avgDetTime = rand(0.8, 3.5);
-    const fpRate = rand(0.01, 0.12);
-    const recEff = rand(88, 99);
-    const attacksMit = randInt(5, 30);
-
-    // Total agents from clusters
-    const totalAgents = clusters.reduce((s, c) => s + c.count, 0);
-
-    // Device mix computed from actual devices
-    const evCount = devicesList.filter(d => d.type.includes('EV')).length;
-    const hvacCount = devicesList.filter(d => d.type.includes('HVAC')).length;
-    const total = devicesList.length || 1;
-    const evPct = Math.round((evCount / total) * 100);
-    const hvacPct = Math.round((hvacCount / total) * 100);
-    const storagePct = Math.max(0, 100 - evPct - hvacPct);
-
-    const onlineCount = devicesList.filter(d => d.status !== 'offline').length;
-    const offlineCount = devicesList.length - onlineCount;
-
-    // Data sources
     const sources = [
-      { name: "Pecan Street API", status: (Math.random() > 0.1 ? 'connected' : 'disconnected') as 'connected' | 'disconnected' },
-      { name: "NREL Solar Data", status: (Math.random() > 0.1 ? 'connected' : 'disconnected') as 'connected' | 'disconnected' },
-      { name: "GridWatch Live", status: (Math.random() > 0.3 ? 'connected' : 'error') as 'connected' | 'error' },
+      { name: 'Pecan Street API', status: 'connected' as const },
+      { name: 'NREL Solar Data', status: 'connected' as const },
+      { name: 'GridWatch Live', status: (Math.random() > 0.3 ? 'connected' : 'error') as 'connected' | 'error' },
     ];
 
-    // Forecast alert from shading events
-    const upcomingEvent = events.length > 0 ? events[0] : null;
-    const fAlert = upcomingEvent ? {
+    const fAlert = fm.shadingEvents.length > 0 ? {
       event: 'Potential Shading Event',
-      detail: `${upcomingEvent.transformer} sector in ${upcomingEvent.duration}. Probability: ${randInt(70, 95)}%.`,
-      probability: rand(0.7, 0.95),
-      leadMinutes: randInt(5, 30),
+      detail: `${fm.shadingEvents[0].transformerName} sector in ${Math.round(fm.shadingEvents[0].durationSec / 60)} mins. Probability: ${Math.round(fm.shadingEvents[0].probability * 100)}%.`,
+      probability: fm.shadingEvents[0].probability, leadMinutes: Math.round(fm.shadingEvents[0].leadTimeSec / 60) || 1,
     } : null;
 
-    // Simulation history
-    const scenarios = ["Adversarial Demand Attack", "Sudden Cloud Shading", "Mass EV Charging", "Frequency Cascade", "VPP Outage"];
+    const scenarios = ['Adversarial Demand Attack', 'Sudden Cloud Shading', 'Mass EV Charging', 'Frequency Cascade', 'VPP Outage'];
     const simHistory: SimulationRecord[] = Array.from({ length: randInt(2, 5) }, () => {
-      const stability = rand(78, 99);
+      const s = rand(78, 99);
       return {
         id: `SIM-${String(randInt(1, 999)).padStart(3, '0')}`,
         scenario: scenarios[randInt(0, scenarios.length)],
         date: new Date(now.getTime() - randInt(1, 72) * 3600000).toLocaleString(),
-        stability: `${stability.toFixed(0)}%`,
-        outcome: stability > 85 ? 'SUCCESS' : 'WARNING',
+        stability: `${s.toFixed(0)}%`, outcome: s > 85 ? 'SUCCESS' : 'WARNING',
       };
     });
 
@@ -552,386 +532,540 @@ export const useGridStore = create<GridState>((set, get) => ({
     }));
 
     return {
-      frequencyHistory: freqHistory,
-      agentClusters: clusters,
-      devices: devicesList,
-      performanceData: perfData,
-      solarForecast: forecastPoints,
-      shadingEvents: events,
-      simulationHistory: simHistory,
-      stabilityZones: zones,
-      clusterCoverage: coverageClusters,
-      coherenceData: coherence,
-      alerts: [],
-      activeAgents: totalAgents,
-      agentSyncRate: rand(97, 99.9),
-      latency: rand(20, 80),
-      solarGeneration: rand(800, 3000),
-      loadDemand: rand(2000, 5000),
-      energySaved: rand(400, 1500),
-      avgDetectionTime: avgDetTime,
-      falsePositiveRate: fpRate,
-      recoveryEfficiency: recEff,
-      attacksMitigated: attacksMit,
-      avgAgentResponse: rand(20, 70),
-      virtualInertia: rand(0.4, 1.5),
-      rewardWeightStatus: Math.random() > 0.5 ? 'MUTATED' : 'STABLE',
+      frequencyHistory: freqHistory, agentClusters: clusters, devices: devicesList,
+      performanceData: perfData, solarForecast: forecastPoints, shadingEvents: shadingEvs,
+      simulationHistory: simHistory, stabilityZones: zones, clusterCoverage: coverage,
+      coherenceData: coherence, alerts: [],
+      activeAgents: ds.totalDevices, agentSyncRate: rand(97, 99.9),
+      latency: rand(20, 50), solarGeneration: Math.round(fm.totalGenerationMW * 1000),
+      loadDemand: Math.round(getPhysicsEngine()?.state.totalLoad ?? 3000),
+      energySaved: rand(400, 1500), avgDetectionTime: rand(0.8, 3.5),
+      falsePositiveRate: rand(0.01, 0.12), recoveryEfficiency: rand(88, 99),
+      attacksMitigated: randInt(5, 30), avgAgentResponse: rand(20, 50),
+      virtualInertia: rand(0.4, 1.5), rewardWeightStatus: 'INITIALIZING',
       systemCapacity: rand(85, 99),
-      deviceMix: { evPercent: evPct, hvacPercent: hvacPct, storagePercent: storagePct },
-      assetsReachable: rand(95, 99.9),
-      onlineDevices: totalAgents - randInt(50, 300),
-      offlineDevices: randInt(50, 300),
-      controllableLoad: rand(1, 8),
-      forecastAlert: fAlert,
-      dataSources: sources,
-      primaryGridFeed: 'https://api.aura-sentinel.io/v1/feed',
-      dfdt: rand(-0.005, 0.005),
-      forecastAccuracy: rand(85, 97),
-      forecastUncertainty: rand(3, 15),
-      falseCalmDetected: Math.random() > 0.85,
+      deviceMix: { evPercent: evPct, hvacPercent: hvacPct, storagePercent: Math.max(0, 100 - evPct - hvacPct) },
+      assetsReachable: rand(95, 99.9), onlineDevices: ds.totalDevices - randInt(50, 300),
+      offlineDevices: randInt(50, 300), controllableLoad: ds.totalControllableLoadMW,
+      forecastAlert: fAlert, dataSources: sources,
+      primaryGridFeed: 'https://api.aura-sentinel.io/v1/feed', dfdt: rand(-0.005, 0.005),
       forecastAccuracyHistory: forecastAccHistory,
       marlRewardHistory: marlRewards,
       attackFrequencyData: attackFreqData,
-      recoveryProgress: 0,
-      deceptiveSignalStrength: rand(0, 100),
       vppCapacityHistory: vppCapHistory,
       vppClusterLog: vppClLog,
       agentResponseTimeline: agentTimeline,
       deviceLoadHistory: devLoadHistory,
+      recoveryProgress: 0,
+      deceptiveSignalStrength: rand(0, 100),
     };
-  });
+  }),
 
-    // Load persistent data from MongoDB (async, overlays config/devices/clusters/simulations)
-    get().loadFromDB();
-  },
-
-  // Called every tick (~2s) to drift all dynamic values in real-time
-  tick: () => {
-    // Periodic DB snapshot
-    tickCounter++;
-    if (tickCounter >= SNAPSHOT_INTERVAL) {
-      tickCounter = 0;
-      get().saveSnapshot();
-    }
-
-    set((state) => {
+  // ════════════════════════════════════════════════════════════════
+  // tick — called every ~2 s, drives ALL engines
+  // ════════════════════════════════════════════════════════════════
+  tick: () => set((state) => {
     if (state.frequencyHistory.length === 0) return state;
-
     const now = ts();
-    const prevFreq = state.frequency;
 
-    // Frequency drift
-    const drift = rand(-0.012, 0.012);
-    const newFreq = clamp(prevFreq + drift, 49.7, 50.3);
-    const dev = Math.abs(50 - newFreq);
-    let newStatus: GridStatus = 'stable';
-    if (dev > 0.15) newStatus = 'critical';
-    else if (dev > 0.08) newStatus = 'warning';
+    // ── Run full engine tick ──
+    const res = simTick({
+      vppEnabled: state.vppEnabled,
+      responseThreshold: state.responseThreshold,
+      deceptiveSignalInjection: state.deceptiveSignalInjection,
+      detectionSensitivity: state.detectionSensitivity,
+      capacityReservedPercent: state.capacityReserved,
+      bidirectionalCharging: state.bidirectionalCharging,
+      autonomousEscalation: state.autonomousEscalation,
+      forecastHorizon: state.forecastHorizon,
+    });
 
-    // df/dt
-    const newDfdt = newFreq - prevFreq;
+    const ph = res.physics;
+    const mm = res.marl;
+    const fm = res.forecast;
+    const dm = res.defense;
+    const scm = res.skyCamera;
 
-    // VPP response
-    const threshold = state.responseThreshold;
-    const vpp = newFreq < 50 - threshold ? rand(50, 200) : newFreq > 50 + threshold ? rand(-150, -30) : 0;
+    // Grid status from physics
+    const dev = Math.abs(ph.frequency - 50);
+    const newStatus: GridStatus = dev > 0.15 ? 'critical' : dev > 0.08 ? 'warning' : 'stable';
 
-    // Latency drift
-    const newLatency = clamp(state.latency + rand(-3, 3), 10, 120);
+    // MARL cluster data
+    const ml = getMARLEngine()!;
+    const clusterInfos = ml.getClusterInfo();
+    const clusters: AgentCluster[] = clusterInfos.map(ci => ({
+      name: ci.name, count: ci.householdCount,
+      response: Math.round(clamp(ci.avgResponse * 100 + 85, 75, 100)),
+      status: ci.status, dominantAction: ci.dominantAction, avgReward: ci.avgReward,
+    }));
 
-    // Solar generation varies by time of day
-    const hour = new Date().getHours();
-    const solarBase = hour >= 6 && hour <= 19 ? rand(500, 4000) : rand(0, 100);
-    const newSolar = clamp(state.solarGeneration + rand(-50, 50), 0, solarBase + 500);
+    // Device stats from MARL
+    const ds = ml.getDeviceStats();
+    const total = ds.totalDevices || 1;
+    const evPct = Math.round((ds.evCount / total) * 100);
+    const hvacPct = Math.round((ds.hvacCount / total) * 100);
 
-    // Load demand drift
-    const newLoad = clamp(state.loadDemand + rand(-30, 30), 1500, 6000);
-
-    // Energy saved accumulates
-    const newEnergySaved = state.energySaved + rand(0.1, 2);
-
-    // Agent metrics drift
-    const newAgentResponse = clamp(state.avgAgentResponse + rand(-2, 2), 15, 100);
-    const newInertia = clamp(state.virtualInertia + rand(-0.05, 0.05), 0.2, 2.0);
-    const agentSync = clamp(state.agentSyncRate + rand(-0.3, 0.3), 95, 99.99);
-
-    // Phase coherence
-    let newCoherence = state.phaseCoherence;
-    if (state.attackStatus !== 'none') {
-      newCoherence = clamp(newCoherence + rand(0.01, 0.05), 0.3, 0.95);
-    } else {
-      newCoherence = clamp(newCoherence + rand(-0.02, 0.01), 0.02, 0.3);
-    }
-
-    // Attack intensity
-    const newAttackIntensity = state.attackStatus !== 'none' ? clamp(state.attackIntensity + rand(-0.5, 0.5), 3, 15) : 0;
-    const newNodesAtRisk = state.attackStatus !== 'none' ? clamp(state.nodesAtRisk + randInt(-50, 50), 200, 3000) : 0;
-
-    // Controllable load varies
-    const newControllableLoad = clamp(state.controllableLoad + rand(-0.2, 0.2), 0.5, 12);
-
-    // Assets reachable
-    const newReachable = clamp(state.assetsReachable + rand(-0.2, 0.2), 90, 99.99);
-
-    // Coherence data shifts
+    // Coherence chart
     const newCoherenceData = [
       ...state.coherenceData.slice(1),
-      {
-        time: state.coherenceData.length,
-        value: newCoherence,
-        attack: state.attackStatus !== 'none' ? rand(0.3, 0.8) : 0,
-      }
+      { time: state.coherenceData.length, value: dm.phaseCoherence, attack: dm.attackDetected ? dm.spectralAnomaly : 0 },
     ];
 
-    // Stability zones drift
-    const newZones = state.stabilityZones.map(z => ({
-      ...z,
-      freq: clamp(z.freq + rand(-0.003, 0.003), 49.95, 50.05),
-    }));
-
-    // Cluster coverage drifts
-    const newCoverage = state.clusterCoverage.map(c => ({
-      ...c,
-      stability: clamp(c.stability + rand(-0.5, 0.5), 75, 99.9),
-    }));
-
-    // Defense metrics drift slowly
-    const newDetTime = clamp(state.avgDetectionTime + rand(-0.05, 0.05), 0.5, 5);
-    const newFpRate = clamp(state.falsePositiveRate + rand(-0.002, 0.002), 0.005, 0.2);
-    const newRecEff = clamp(state.recoveryEfficiency + rand(-0.3, 0.3), 80, 99.9);
-
-    // Agent cluster response drifts
-    const newClusters = state.agentClusters.map(c => ({
-      ...c,
-      response: clamp(c.response + rand(-1, 1), 75, 100),
-      status: (Math.random() > 0.05 ? c.status : (c.status === 'active' ? 'idle' : 'active')) as 'active' | 'idle',
-    }));
-
-    // Occasionally add a defense log entry during attacks
+    // Defense log
     const newDefenseLog = [...state.defenseLog];
-    if (state.attackStatus !== 'none' && Math.random() > 0.6) {
-      const actions = [
-        "Detected phase alignment anomaly",
-        "Injected noise signal",
-        "Randomized agent rewards",
-        "Frequency drift compensated",
-        "Deployed desynchronization signals",
-        "Escalated to autonomous defense",
-        "Isolated compromised node cluster",
-      ];
-      const targets = ["Cluster A", "Cluster B", "Sector 4", "Global", "VPP-8", "T-42 Zone"];
+    for (const act of dm.defenseActions) {
       newDefenseLog.unshift({
-        time: now,
-        action: actions[randInt(0, actions.length)],
-        target: targets[randInt(0, targets.length)],
-        severity: Math.random() > 0.7 ? 'warning' : 'info',
+        time: new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        action: act.description || act.action, target: act.target, severity: act.severity,
       });
-      if (newDefenseLog.length > 20) newDefenseLog.length = 20;
     }
+    if (newDefenseLog.length > 20) newDefenseLog.length = 20;
 
-    // Forecast alert updates occasionally
+    // Zones drift
+    const newZones = state.stabilityZones.map(z => ({ ...z, freq: clamp(z.freq + rand(-0.003, 0.003), 49.95, 50.05) }));
+    const newCoverage = state.clusterCoverage.map(c => ({ ...c, stability: clamp(c.stability + rand(-0.5, 0.5), 75, 99.9) }));
+
+    // Forecast alert
     let newForecastAlert = state.forecastAlert;
-    if (newForecastAlert && Math.random() > 0.95) {
-      const transformers = state.shadingEvents.map(e => e.transformer);
-      const t = transformers[randInt(0, Math.max(1, transformers.length))] || `T-${randInt(10, 99)}`;
+    if (fm.shadingEvents.length > 0) {
+      const ev = fm.shadingEvents[0];
       newForecastAlert = {
         event: 'Potential Shading Event',
-        detail: `${t} sector in ${randInt(3, 25)} mins. Probability: ${randInt(65, 95)}%.`,
-        probability: rand(0.65, 0.95),
-        leadMinutes: randInt(3, 25),
+        detail: `${ev.transformerName} sector in ${Math.round(ev.leadTimeSec)}s. Probability: ${Math.round(ev.probability * 100)}%.`,
+        probability: ev.probability, leadMinutes: Math.round(ev.leadTimeSec / 60) || 1,
       };
     }
 
+    // Solar forecast and shading events
+    const forecastUpdate: ForecastPoint[] = fm.transformers.slice(0, 10).map((t, i) => ({
+      time: `${8 + i}:00`, generation: Math.round(t.currentGeneration),
+      shading: (t.shadingFactor > 0.5 ? 'high' : t.shadingFactor > 0.2 ? 'medium' : 'none') as ForecastPoint['shading'],
+    }));
+
+    const shadingUpdate: ShadingEvent[] = fm.shadingEvents.map(e => ({
+      time: new Date(Date.now() + e.leadTimeSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      transformer: e.transformerName, severity: e.severity.charAt(0).toUpperCase() + e.severity.slice(1),
+      duration: `${Math.round(e.durationSec / 60)}m`,
+    }));
+
+    // ── Build engine telemetry ──
+    const marlTelemetry: MARLTelemetry = {
+      convergenceRate: mm.convergenceRate, avgReward: mm.avgReward, rewardHistory: mm.rewardHistory,
+      episodeCount: mm.episodeCount, qTableStats: mm.qTableStats, frequencyTrackingError: mm.frequencyTrackingError,
+    };
+
+    const defenseTelemetry: DefenseTelemetry = {
+      spectralAnomaly: dm.spectralAnomaly, cusumStatistic: dm.cusumStatistic, cusumThreshold: dm.cusumThreshold,
+      synchronizationIndex: dm.synchronizationIndex, entropyScore: dm.entropyScore,
+      loadSpectrum: dm.loadSpectrum, detectionLatencyMs: dm.detectionLatencyMs,
+    };
+
+    const forecastTelemetry: ForecastTelemetry = {
+      currentIrradiance: fm.currentIrradiance, clearSkyIrradiance: fm.clearSkyIrradiance,
+      crps: fm.crps, pinballLoss: fm.pinballLoss, reliabilityScore: fm.reliabilityScore,
+      forecastBands: fm.forecast30s.map(b => ({ timeOffset: b.timeOffset, predicted: b.predicted, lower10: b.lower10, lower25: b.lower25, upper75: b.upper75, upper90: b.upper90, shadingProb: b.shadingProb })),
+      clouds: fm.clouds.map(c => ({ id: c.id, x: c.position.x, y: c.position.y, opacity: c.opacity, size: c.size })),
+      transformers: fm.transformers.map(t => ({ id: t.id, name: t.name, shadingFactor: t.shadingFactor, currentGenMW: t.currentGeneration / 1000, predicted30s: t.predictedShading30s })),
+    };
+
+    // ── Auto-generate alerts from engine state ──
+    const newAlerts = [...state.alerts];
+    if (dev > 0.15 && (state.alerts.length === 0 || state.alerts[0]?.type !== 'FREQ_CRITICAL')) {
+      newAlerts.unshift({ id: Math.random().toString(36).substr(2, 9), time: now, type: 'FREQ_CRITICAL', severity: 'critical', message: `Frequency deviation ${(dev * 1000).toFixed(0)} mHz exceeds critical threshold (150 mHz)`, status: 'active' });
+    } else if (dev > 0.08 && (state.alerts.length === 0 || state.alerts[0]?.type !== 'FREQ_WARNING')) {
+      newAlerts.unshift({ id: Math.random().toString(36).substr(2, 9), time: now, type: 'FREQ_WARNING', severity: 'warning', message: `Frequency deviation ${(dev * 1000).toFixed(0)} mHz — approaching critical band`, status: 'active' });
+    }
+    if (dm.attackDetected && (state.alerts.length === 0 || state.alerts[0]?.type !== 'ATTACK')) {
+      newAlerts.unshift({ id: Math.random().toString(36).substr(2, 9), time: now, type: 'ATTACK', severity: 'attack', message: `Attack detected — spectral anomaly ${(dm.spectralAnomaly * 100).toFixed(0)}%, phase coherence ${(dm.phaseCoherence * 100).toFixed(0)}%`, status: 'active' });
+    }
+    if (scm && scm.rampAlert && (state.alerts.length === 0 || state.alerts[0]?.type !== 'RAMP_ALERT')) {
+      newAlerts.unshift({ id: Math.random().toString(36).substr(2, 9), time: now, type: 'RAMP_ALERT', severity: 'warning', message: `Sky-camera ramp alert: ${(scm.rampMagnitude * 100).toFixed(0)}% irradiance change in ${scm.rampLeadTimeSec.toFixed(0)}s`, status: 'active' });
+    }
+    // Auto-resolve stale alerts
+    for (const a of newAlerts) {
+      if (a.status === 'active') {
+        if (a.type === 'FREQ_CRITICAL' && dev <= 0.10) a.status = 'resolved';
+        if (a.type === 'FREQ_WARNING'  && dev <= 0.05) a.status = 'resolved';
+        if (a.type === 'ATTACK' && !dm.attackDetected) a.status = 'resolved';
+        if (a.type === 'RAMP_ALERT' && scm && !scm.rampAlert) a.status = 'resolved';
+      }
+    }
+    if (newAlerts.length > 50) newAlerts.length = 50;
+
+    // ── Rolling performanceData — 7-entry window updated every tick ──
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const todayLabel = dayNames[new Date().getDay()];
+    const stabilityPct = Math.max(0, 100 - dev * 500); // 0.2Hz deviation → 0% stability
+    const savingsKwh = Math.abs(mm.totalVPPResponseMW) * 2 / 3.6; // 2s tick worth of VPP
+    const attacksToday = dm.attackDetected ? 1 : 0;
+    const newPerformanceData = [...state.performanceData];
+    if (newPerformanceData.length > 0) {
+      const last = newPerformanceData[newPerformanceData.length - 1];
+      if (last.day === todayLabel) {
+        // Rolling average for stability, accumulating for savings/attacks
+        last.stability = last.stability * 0.95 + stabilityPct * 0.05;
+        last.savings += savingsKwh;
+        last.attacks += attacksToday;
+      } else {
+        newPerformanceData.push({ day: todayLabel, stability: stabilityPct, savings: savingsKwh, attacks: attacksToday });
+        if (newPerformanceData.length > 7) newPerformanceData.shift();
+      }
+    }
+
+    // ── Real device table from MARL agents (representative sample) ──
+    const agents = ml.agents;
+    const clusterNames = clusterInfos.map(ci => ci.name);
+    const sampleAgents = agents.filter((_, i) => i % 10 === 0).slice(0, 20); // every 10th agent
+    const newDeviceTable: Device[] = sampleAgents.flatMap(agent => {
+      const cName = clusterNames[agent.clusterId] || `Cluster ${agent.clusterId}`;
+      return agent.devices.map((d, di) => {
+        const typeLabel = d.type === 'ev' ? 'EV Charger' : d.type === 'hvac' ? 'HVAC' : d.type === 'battery' ? 'Home Battery' : 'Smart Appliance';
+        const st = d.currentPower === 0 && d.type !== 'hvac' ? 'offline' : agent.lastAction !== 0 ? 'responding' : 'online';
+        return {
+          id: `${agent.id}-D${di}`,
+          type: typeLabel,
+          status: st as Device['status'],
+          load: `${d.currentPower >= 0 ? '+' : ''}${d.currentPower.toFixed(1)}kW`,
+          cluster: cName,
+          latency: st === 'offline' ? 'N/A' : `${(agent.responseTimeUs / 1000).toFixed(1)}ms`,
+        };
+      });
+    });
+
     return {
-      frequency: newFreq,
-      frequencyHistory: [...state.frequencyHistory.slice(-59), { time: now, value: newFreq }],
-      status: newStatus,
-      dfdt: newDfdt,
-      vppResponse: Math.round(vpp),
-      latency: newLatency,
-      solarGeneration: Math.round(newSolar),
-      loadDemand: Math.round(newLoad),
-      energySaved: Math.round(newEnergySaved),
-      avgAgentResponse: newAgentResponse,
-      virtualInertia: newInertia,
-      agentSyncRate: agentSync,
-      phaseCoherence: newCoherence,
-      attackIntensity: newAttackIntensity,
-      nodesAtRisk: newNodesAtRisk,
+      frequency: ph.frequency, dfdt: ph.dfdt, status: newStatus,
+      frequencyHistory: [...state.frequencyHistory.slice(-59), { time: now, value: ph.frequency }],
+      vppResponse: Math.round(mm.totalVPPResponseMW),
+      latency: clamp(mm.avgResponseTimeMs, 0.01, 120),
+      solarGeneration: Math.round(fm.totalGenerationMW * 1000),
+      loadDemand: Math.round(ph.totalLoad),
+      // Energy saved: cumulative VPP injection × tick interval (2s → hours)
+      energySaved: Math.round(state.energySaved + Math.abs(mm.totalVPPResponseMW) * (2 / 3600) * 1000), // kWh
+
+      agentClusters: clusters,
+      activeAgents: ds.totalDevices,
+      agentSyncRate: clamp(100 - mm.frequencyTrackingError * 10, 95, 99.99),
+      avgAgentResponse: clamp(mm.avgResponseTimeMs, 0.01, 100),
+      virtualInertia: mm.virtualInertia,
+      rewardWeightStatus: ml.getRewardWeightStatus(),
+      systemCapacity: clamp(ds.totalControllableLoadMW / 10 * 100, 50, 99),
+
+      attackStatus: dm.attackStatus as AttackStatus,
+      phaseCoherence: dm.phaseCoherence,
+      attackIntensity: dm.attackIntensity,
+      nodesAtRisk: dm.nodesAtRisk,
+      avgDetectionTime: dm.detectionLatencyMs,
+      falsePositiveRate: dm.falsePositiveRate,
+      recoveryEfficiency: dm.recoveryEfficiency,
+      attacksMitigated: dm.attacksMitigated,
+
+      deviceMix: { evPercent: evPct, hvacPercent: hvacPct, storagePercent: Math.max(0, 100 - evPct - hvacPct) },
+      assetsReachable: clamp(98 - (ds.totalDevices - ds.evCount - ds.hvacCount) * 0.001, 90, 99.9),
+      onlineDevices: ds.totalDevices - ds.batteryCount, // derive from actual stats
+      offlineDevices: ds.batteryCount, // battery-only units counted as offline (no comms)
+      controllableLoad: ds.totalControllableLoadMW,
+
+      // Real device table from MARL agents (representative sample)
+      devices: newDeviceTable,
+
+      // Rolling performanceData — shift in latest tick metrics
+      performanceData: newPerformanceData,
+
+      // Auto-generated alerts
+      alerts: newAlerts,
+
       coherenceData: newCoherenceData,
+      defenseLog: newDefenseLog,
       stabilityZones: newZones,
       clusterCoverage: newCoverage,
-      avgDetectionTime: newDetTime,
-      falsePositiveRate: newFpRate,
-      recoveryEfficiency: newRecEff,
-      agentClusters: newClusters,
-      defenseLog: newDefenseLog,
-      controllableLoad: newControllableLoad,
-      assetsReachable: newReachable,
       forecastAlert: newForecastAlert,
+      solarForecast: forecastUpdate.length > 0 ? forecastUpdate : state.solarForecast,
+      shadingEvents: shadingUpdate.length > 0 ? shadingUpdate : state.shadingEvents,
       // Enhanced dynamic fields
-      forecastAccuracy: clamp(state.forecastAccuracy + rand(-0.5, 0.5), 80, 99),
-      forecastUncertainty: clamp(state.forecastUncertainty + rand(-0.3, 0.3), 2, 20),
+      forecastAccuracy: clamp(fm.reliabilityScore * 100, 80, 99),
+      forecastUncertainty: clamp(fm.crps * 100, 2, 20),
       falseCalmDetected: Math.random() > 0.97 ? !state.falseCalmDetected : state.falseCalmDetected,
       recoveryProgress: state.attackStatus !== 'none' ? clamp(state.recoveryProgress + rand(1, 5), 0, 100) : 0,
       deceptiveSignalStrength: state.attackStatus !== 'none' && state.deceptiveSignalInjection ? clamp(state.deceptiveSignalStrength + rand(-3, 5), 20, 100) : clamp(state.deceptiveSignalStrength - 2, 0, 100),
-      agentResponseTimeline: [...state.agentResponseTimeline.slice(-19), { time: now, responseMs: newAgentResponse }],
-      deviceLoadHistory: [...state.deviceLoadHistory.slice(-19), { time: now, ev: rand(1, 5), hvac: rand(0.5, 3), storage: rand(-1, 2) }],
-      vppCapacityHistory: [...state.vppCapacityHistory.slice(-14), { time: now, capacity: rand(60, 120), dispatched: Math.abs(vpp) > 0 ? rand(10, 60) : 0 }],
-    };
-  });
-  },
+      agentResponseTimeline: [...state.agentResponseTimeline.slice(-19), { time: now, responseMs: rand(15, 90) }],
 
-  updateFrequency: (val) => set((state) => {
-    const dev = Math.abs(50 - val);
-    let newStatus: GridStatus = 'stable';
-    if (dev > 0.15) newStatus = 'critical';
-    else if (dev > 0.08) newStatus = 'warning';
+      // Analytics rolling history
+      attackFrequencyData: (() => {
+        const d = [...state.attackFrequencyData];
+        const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
+        const last = d[d.length - 1];
+        if (last && last.day === dayName) { if (dm.attackDetected) last.attacks++; }
+        else { d.push({ day: dayName, attacks: dm.attackDetected ? 1 : 0 }); }
+        if (d.length > 7) d.shift();
+        return d;
+      })(),
+      marlRewardHistory: [...state.marlRewardHistory.slice(-99), { episode: mm.episodeCount, reward: mm.avgReward }],
+      forecastAccuracyHistory: [...state.forecastAccuracyHistory.slice(-59), { time: now, accuracy: clamp(fm.reliabilityScore * 100, 0, 100) }],
 
-    return {
-      frequency: val,
-      status: newStatus,
-      vppResponse: val < 50 - state.responseThreshold ? Math.round(rand(50, 200)) : val > 50 + state.responseThreshold ? Math.round(rand(-150, -30)) : 0,
-    };
-  }),
+      // Device load + VPP capacity rolling history
+      deviceLoadHistory: [...state.deviceLoadHistory.slice(-59), {
+        time: now,
+        ev: ds.evCount > 0 ? +(ds.totalControllableLoadMW * (ds.evCount / total) * 1000).toFixed(1) : 0,
+        hvac: ds.hvacCount > 0 ? +(ds.totalControllableLoadMW * (ds.hvacCount / total) * 1000).toFixed(1) : 0,
+        storage: ds.batteryCount > 0 ? +(ds.totalControllableLoadMW * (ds.batteryCount / total) * 1000).toFixed(1) : 0,
+      }],
+      vppCapacityHistory: [...state.vppCapacityHistory.slice(-59), { time: now, capacity: +Math.abs(mm.totalVPPResponseMW).toFixed(2), dispatched: +(Math.random() * 50 + 10).toFixed(1) }],
+      // Cluster formation log — record status transitions
+      vppClusterLog: (() => {
+        const log = [...state.vppClusterLog];
+        for (const ci of clusterInfos) {
+          const prev = state.agentClusters.find(c => c.name === ci.name);
+          if (prev && prev.status !== ci.status) {
+            log.push({ time: now, cluster: ci.name, action: ci.status === 'active' ? 'joined' : 'left' });
+          }
+        }
+        if (log.length > 50) log.splice(0, log.length - 50);
+        return log;
+      })(),
 
-  toggleVPP: () => set((state) => {
-    const newVal = !state.vppEnabled;
-    dbPut('config', { vppEnabled: newVal });
-    return { vppEnabled: newVal };
-  }),
-
-  setVPPConfig: (config) => {
-    set((state) => ({ ...state, ...config }));
-    // Persist config to MongoDB
-    dbPut('config', config);
-  },
-
-  addHistoryPoint: (point) => set((state) => ({
-    frequencyHistory: [...state.frequencyHistory.slice(-59), point],
-  })),
-
-  triggerAttack: (status) => set(() => {
-    if (status === 'none') {
-      return {
-        attackStatus: 'none' as AttackStatus,
-        phaseCoherence: rand(0.05, 0.15),
-        attackIntensity: 0,
-        nodesAtRisk: 0,
-      };
-    }
-    return {
-      attackStatus: status,
-      phaseCoherence: rand(0.5, 0.85),
-      attackIntensity: rand(5, 12),
-      nodesAtRisk: randInt(500, 2500),
+      marlTelemetry, defenseTelemetry, forecastTelemetry,
+      skyCameraTelemetry: scm ? {
+        framesProcessed: scm.framesProcessed, avgProcessingMs: scm.avgProcessingMs,
+        cloudFraction: scm.cloudFraction, blobCount: scm.blobCount,
+        avgOpticalDepth: scm.avgOpticalDepth, avgCloudVelocity: scm.avgCloudVelocity,
+        rampAlert: scm.rampAlert, rampMagnitude: scm.rampMagnitude, rampLeadTimeSec: scm.rampLeadTimeSec,
+      } : state.skyCameraTelemetry,
     };
   }),
 
-  addAlert: (alert) => set((state) => {
-    const newAlert = { ...alert, id: Math.random().toString(36).substr(2, 9) };
-    // Persist to MongoDB
-    dbPost('alerts', {
-      alertId: newAlert.id,
-      time: newAlert.time,
-      type: newAlert.type,
-      severity: newAlert.severity,
-      message: newAlert.message,
-      status: newAlert.status,
+  // ════════════════════════════════════════════════════════════════
+  // DB persistence hook — fires after every tick return
+  // Wrapped in a separate set() call so it doesn't delay the UI update
+  // ════════════════════════════════════════════════════════════════
+  _dbSyncAfterTick: () => {
+    const s = get();
+    const ml = getMARLEngine();
+    if (!ml) return;
+
+    // Build new alerts for this tick (compare IDs)
+    const tickAlerts = s.alerts.filter(a => a.status === 'active').map(a => ({
+      alertId: a.id, time: a.time, type: a.type,
+      severity: a.severity, message: a.message, status: a.status,
+      frequency: s.frequency, dfdt: s.dfdt, attackIntensity: s.attackIntensity,
+    }));
+
+    dbTickHook({
+      tickNumber: s.marlTelemetry.episodeCount,
+      getSnapshot: () => {
+        const agents = ml.serializeAgents();
+        return {
+          snapshotId: `auto-ep-${s.marlTelemetry.episodeCount}`,
+          episodeCount: s.marlTelemetry.episodeCount,
+          avgReward: s.marlTelemetry.avgReward,
+          convergenceRate: s.marlTelemetry.convergenceRate,
+          frequencyTrackingError: s.marlTelemetry.frequencyTrackingError,
+          qTableStats: s.marlTelemetry.qTableStats,
+          hyperparams: ml.getHyperparams(),
+          agents,
+        };
+      },
+      metric: {
+        tick: s.marlTelemetry.episodeCount,
+        frequency: s.frequency, dfdt: s.dfdt,
+        totalLoad: s.loadDemand, totalGeneration: s.solarGeneration,
+        renewableGeneration: s.solarGeneration, vppResponseMW: s.vppResponse,
+        solarGenerationKW: s.solarGeneration,
+        marlAvgReward: s.marlTelemetry.avgReward,
+        marlConvergence: s.marlTelemetry.convergenceRate,
+        marlEpisode: s.marlTelemetry.episodeCount,
+        marlVirtualInertia: s.virtualInertia,
+        avgResponseTimeMs: s.avgAgentResponse,
+        attackDetected: s.attackStatus !== 'none',
+        phaseCoherence: s.phaseCoherence,
+        spectralAnomaly: s.defenseTelemetry.spectralAnomaly,
+        cusumStatistic: s.defenseTelemetry.cusumStatistic,
+        crps: s.forecastTelemetry.crps,
+        reliabilityScore: s.forecastTelemetry.reliabilityScore,
+        cloudCoverage: s.skyCameraTelemetry.cloudFraction,
+        rampAlert: s.skyCameraTelemetry.rampAlert,
+        rampMagnitude: s.skyCameraTelemetry.rampMagnitude,
+      },
+      newAlerts: tickAlerts,
     });
-    return { alerts: [newAlert, ...state.alerts].slice(0, 50) };
-  }),
+  },
 
-  resolveAlert: (id) => set((state) => {
-    // Persist to MongoDB
-    dbPut('alerts', { alertId: id });
-    return { alerts: state.alerts.map(a => a.id === id ? { ...a, status: 'resolved' as const } : a) };
-  }),
+  // ════════════════════════════════════════════════════════════════
+  // Actions
+  // ════════════════════════════════════════════════════════════════
+  updateFrequency: (val) => {
+    const ph = getPhysicsEngine();
+    if (ph) ph.state.frequency = val;
+    set(() => {
+      const d = Math.abs(50 - val);
+      return { frequency: val, status: (d > 0.15 ? 'critical' : d > 0.08 ? 'warning' : 'stable') as GridStatus };
+    });
+  },
 
-  setSimulationParams: (params) => set((state) => ({
-    simulationParams: { ...state.simulationParams, ...params },
+  toggleVPP: () => set((s) => ({ vppEnabled: !s.vppEnabled })),
+  setVPPConfig: (config) => {
+    if (config.skyCamEnabled !== undefined) setSkyCamEnabled(config.skyCamEnabled);
+    set((s) => ({ ...s, ...config }));
+  },
+
+  addHistoryPoint: (pt) => set((s) => ({ frequencyHistory: [...s.frequencyHistory.slice(-59), pt] })),
+
+  triggerAttack: (status) => {
+    if (status === 'none') {
+      simStopAttack();
+      set({ attackStatus: 'none', phaseCoherence: rand(0.05, 0.15), attackIntensity: 0, nodesAtRisk: 0 });
+    } else {
+      simTriggerAttack('load_sync', 0.6);
+      set({ attackStatus: status, phaseCoherence: rand(0.5, 0.85), attackIntensity: rand(5, 12), nodesAtRisk: randInt(500, 2500) });
+    }
+  },
+
+  addAlert: (alert) => set((s) => ({
+    alerts: [{ ...alert, id: Math.random().toString(36).substr(2, 9) }, ...s.alerts].slice(0, 50),
   })),
+  resolveAlert: (id) => set((s) => ({ alerts: s.alerts.map(a => a.id === id ? { ...a, status: 'resolved' } : a) })),
+
+  setSimulationParams: (params) => set((s) => ({ simulationParams: { ...s.simulationParams, ...params } })),
 
   runSimulation: () => set((state) => {
     const p = state.simulationParams;
-    const maxDev = rand(50, 300);
-    const recTime = rand(1.5, 8);
-    const energyCurt = rand(50, 500);
-    const simFreq = 50 - (maxDev / 1000);
-
+    const result = runStressTest({
+      scenario: p.scenario, intensity: p.intensity, affectedNodes: p.affectedNodes,
+      duration: Math.max(5, Math.round(p.duration / 2)),
+      vppEnabled: state.vppEnabled, responseThreshold: state.responseThreshold,
+      deceptiveSignalInjection: state.deceptiveSignalInjection, detectionSensitivity: state.detectionSensitivity,
+    });
     return {
       simulationResults: {
-        maxDeviation: maxDev,
-        recoveryTime: recTime,
-        energyCurtailed: energyCurt,
-        currentFrequency: simFreq,
+        maxDeviation: result.maxDeviation, recoveryTime: result.recoveryTime,
+        energyCurtailed: result.energyCurtailed, currentFrequency: result.finalFrequency,
+        avgVPPResponse: result.avgVPPResponse, attackDetected: result.attackDetected,
       },
     };
   }),
 
   completeSimulation: () => set((state) => {
-    const results = state.simulationResults;
-    if (!results) return state;
-
-    const stability = 100 - (results.maxDeviation / 10);
-    const newRecord: SimulationRecord = {
+    const r = state.simulationResults;
+    if (!r) return state;
+    const stab = Math.max(0, 100 - r.maxDeviation / 10);
+    const rec: SimulationRecord = {
       id: `SIM-${String(randInt(1, 999)).padStart(3, '0')}`,
-      scenario: state.simulationParams.scenario,
-      date: new Date().toLocaleString(),
-      stability: `${stability.toFixed(0)}%`,
-      outcome: stability > 85 ? 'SUCCESS' : 'WARNING',
+      scenario: state.simulationParams.scenario, date: new Date().toLocaleString(),
+      stability: `${stab.toFixed(0)}%`, outcome: stab > 85 ? 'SUCCESS' : 'WARNING',
     };
-
-    // Persist to MongoDB
-    dbPost('simulations', {
-      simId: newRecord.id,
-      scenario: newRecord.scenario,
-      date: newRecord.date,
-      stability: newRecord.stability,
-      outcome: newRecord.outcome,
-      params: state.simulationParams,
-      results: {
-        maxDeviation: results.maxDeviation,
-        recoveryTime: results.recoveryTime,
-        energyCurtailed: results.energyCurtailed,
-      },
-    });
-
-    return {
-      simulationResults: null,
-      simulationHistory: [newRecord, ...state.simulationHistory].slice(0, 20),
-    };
+    return { simulationResults: null, simulationHistory: [rec, ...state.simulationHistory].slice(0, 20) };
   }),
 
-  addDefenseLogEntry: (entry) => set((state) => {
-    // Persist to MongoDB
-    dbPost('defense-log', entry);
-    return { defenseLog: [entry, ...state.defenseLog].slice(0, 20) };
-  }),
+  addDefenseLogEntry: (entry) => set((s) => ({ defenseLog: [entry, ...s.defenseLog].slice(0, 20) })),
 
-  setSystemMode: (mode) => {
-    set({ systemMode: mode });
-    dbPut('config', { systemMode: mode });
+  // ════════════════════════════════════════════════════════════════
+  // Live Simulation — runs the stress test tick-by-tick with
+  // animated frame output at ~500ms intervals
+  // ════════════════════════════════════════════════════════════════
+  startLiveSimulation: () => {
+    const state = get();
+    // Stop any existing live sim
+    if (state.liveSimTimerId) clearInterval(state.liveSimTimerId);
+
+    const p = state.simulationParams;
+    const totalTicks = Math.max(5, Math.round(p.duration / 2));
+
+    // Inject the scenario into the live engines
+    const ph = getPhysicsEngine();
+    const df = getDefenseEngine();
+    if (!ph) return;
+
+    const mwImpact = (p.intensity / 100) * 500;
+    switch (p.scenario) {
+      case 'adversarial':
+        df?.simulateAttack('load_sync', p.intensity / 100);
+        break;
+      case 'cloud-shading':
+        ph.state.renewableGeneration *= (1 - p.intensity / 100);
+        ph.state.totalGeneration = ph.state.conventionalGeneration + ph.state.renewableGeneration;
+        break;
+      case 'ev-mass':
+        ph.state.totalLoad += mwImpact;
+        break;
+      case 'freq-dip':
+        ph.state.frequency -= (p.intensity / 100) * 0.5;
+        break;
+    }
+
+    set({ liveSimStatus: 'running', liveSimFrames: [], liveSimTick: 0, liveSimTotalTicks: totalTicks, simulationResults: null });
+
+    // Start the interval
+    const timerId = setInterval(() => get()._liveSimStep(), 500);
+    set({ liveSimTimerId: timerId });
   },
 
-  login: (name, role) => set({ isLoggedIn: true, userName: name, userRole: role }),
-  logout: () => set({ isLoggedIn: false, userName: '', userRole: '' }),
+  _liveSimStep: () => {
+    const state = get();
+    if (state.liveSimStatus !== 'running') return;
 
-  resetDefaults: () => {
-    const defaults = {
-      responseThreshold: 0.05,
-      capacityReserved: 15,
-      criticalWarningLevel: 0.25,
-      detectionSensitivity: 'medium' as DetectionSensitivity,
-      deceptiveSignalInjection: true,
-      autonomousEscalation: true,
-      forecastHorizon: '30s' as ForecastHorizon,
-      skyCamEnabled: true,
-      primaryGridFeed: '',
-      marlLearningRate: 0.001,
-      marlDiscountFactor: 0.95,
+    const currentTick = state.liveSimTick;
+    if (currentTick >= state.liveSimTotalTicks) {
+      // Simulation complete
+      if (state.liveSimTimerId) clearInterval(state.liveSimTimerId);
+      const frames = state.liveSimFrames;
+      const maxDev = frames.reduce((mx, f) => Math.max(mx, Math.abs(f.frequency - 50) * 1000), 0);
+      const recFrame = frames.findIndex(f => Math.abs(f.frequency - 50) < 0.02);
+      const recoverySec = recFrame >= 0 ? recFrame * 2 : state.liveSimTotalTicks * 2;
+      const totalVPP = frames.reduce((s, f) => s + Math.abs(f.vppMW), 0);
+      const detected = frames.some(f => f.attackDetected);
+      const last = frames[frames.length - 1];
+
+      // Clean up attack
+      if (state.simulationParams.scenario === 'adversarial') simStopAttack();
+
+      set({
+        liveSimStatus: 'complete',
+        liveSimTimerId: null,
+        simulationResults: {
+          maxDeviation: maxDev,
+          recoveryTime: recoverySec,
+          energyCurtailed: maxDev * recoverySec / 3600,
+          currentFrequency: last?.frequency ?? 50,
+          avgVPPResponse: totalVPP / Math.max(1, frames.length),
+          attackDetected: detected,
+        },
+      });
+      return;
+    }
+
+    // Run one engine tick
+    const res = simTick({
+      vppEnabled: state.vppEnabled,
+      responseThreshold: state.responseThreshold,
+      deceptiveSignalInjection: state.deceptiveSignalInjection,
+      detectionSensitivity: state.detectionSensitivity,
+    });
+
+    const ph = res.physics;
+    const dev = Math.abs(ph.frequency - 50);
+    const frame: LiveSimFrame = {
+      tick: currentTick,
+      frequency: ph.frequency,
+      dfdt: ph.dfdt,
+      vppMW: res.marl.totalVPPResponseMW,
+      loadMW: ph.totalLoad,
+      genMW: ph.totalGeneration,
+      attackDetected: res.defense.attackDetected,
+      status: dev > 0.15 ? 'critical' : dev > 0.08 ? 'warning' : 'stable',
     };
-    set(defaults);
-    dbPut('config', defaults);
+
+    set({
+      liveSimTick: currentTick + 1,
+      liveSimFrames: [...state.liveSimFrames, frame],
+      frequency: ph.frequency,
+      dfdt: ph.dfdt,
+      status: frame.status,
+    });
+  },
+
+  pauseLiveSimulation: () => {
+    const state = get();
+    if (state.liveSimTimerId) clearInterval(state.liveSimTimerId);
+    set({ liveSimStatus: 'paused', liveSimTimerId: null });
   },
 
   // ─── FastAPI Server Data ──────────────────────────────────────────────
@@ -1080,122 +1214,100 @@ export const useGridStore = create<GridState>((set, get) => ({
     set(updates);
   },
 
-  // ─── DB Sync Actions ──────────────────────────────────────────────────
+  resumeLiveSimulation: () => {
+    const state = get();
+    if (state.liveSimStatus !== 'paused') return;
+    const timerId = setInterval(() => get()._liveSimStep(), 500);
+    set({ liveSimStatus: 'running', liveSimTimerId: timerId });
+  },
 
-  loadFromDB: async () => {
-    try {
-      // Seed DB if empty (fire-and-forget, idempotent)
-      await dbPost('seed', {});
+  stopLiveSimulation: () => {
+    const state = get();
+    if (state.liveSimTimerId) clearInterval(state.liveSimTimerId);
+    simStopAttack();
+    set({ liveSimStatus: 'idle', liveSimTimerId: null, liveSimFrames: [], liveSimTick: 0 });
+  },
 
-      // Load persistent data in parallel
-      const [config, devices, clusters, simulations, alerts, defenseLogs] = await Promise.all([
-        dbGet<any>('config'),
-        dbGet<any[]>('devices'),
-        dbGet<any[]>('clusters'),
-        dbGet<any[]>('simulations'),
-        dbGet<any[]>('alerts'),
-        dbGet<any[]>('defense-log'),
-      ]);
-
-      const updates: Partial<GridState> = { dbReady: true };
-
-      if (config) {
-        updates.vppEnabled = config.vppEnabled ?? true;
-        updates.bidirectionalCharging = config.bidirectionalCharging ?? true;
-        updates.responseThreshold = config.responseThreshold ?? 0.05;
-        updates.capacityReserved = config.capacityReserved ?? 15;
-        updates.criticalWarningLevel = config.criticalWarningLevel ?? 0.25;
-        updates.detectionSensitivity = config.detectionSensitivity ?? 'medium';
-        updates.deceptiveSignalInjection = config.deceptiveSignalInjection ?? true;
-        updates.autonomousEscalation = config.autonomousEscalation ?? true;
-        updates.forecastHorizon = config.forecastHorizon ?? '30s';
-        updates.skyCamEnabled = config.skyCamEnabled ?? true;
-        updates.primaryGridFeed = config.primaryGridFeed ?? '';
-        updates.marlLearningRate = config.marlLearningRate ?? 0.001;
-        updates.marlDiscountFactor = config.marlDiscountFactor ?? 0.95;
-        if (config.dataSources?.length) updates.dataSources = config.dataSources;
+  // ════════════════════════════════════════════════════════════════
+  // Engine-backed event injection (used by EventInjector)
+  // ════════════════════════════════════════════════════════════════
+  injectEvent: (type, magnitude = 150) => {
+    switch (type) {
+      case 'freq-dip':
+        injectFrequencyDip(magnitude); // mHz
+        break;
+      case 'load-spike':
+        injectLoadSpike(magnitude);    // MW
+        break;
+      case 'vpp-loss': {
+        const ph = getPhysicsEngine();
+        if (ph) ph.state.renewableGeneration *= 0.8;
+        break;
       }
-
-      if (devices?.length) {
-        updates.devices = devices.map((d: any) => ({
-          id: d.deviceId,
-          type: d.type,
-          status: d.status,
-          load: d.load,
-          cluster: d.cluster,
-          latency: d.latency,
-        }));
-      }
-
-      if (clusters?.length) {
-        updates.agentClusters = clusters.map((c: any) => ({
-          name: c.name,
-          count: c.count,
-          response: c.response,
-          status: c.status,
-        }));
-        updates.activeAgents = clusters.reduce((s: number, c: any) => s + c.count, 0);
-      }
-
-      if (simulations?.length) {
-        updates.simulationHistory = simulations.map((s: any) => ({
-          id: s.simId,
-          scenario: s.scenario,
-          date: s.date,
-          stability: s.stability,
-          outcome: s.outcome,
-        }));
-      }
-
-      if (alerts?.length) {
-        updates.alerts = alerts.map((a: any) => ({
-          id: a.alertId,
-          time: a.time,
-          type: a.type,
-          severity: a.severity,
-          message: a.message,
-          status: a.status,
-        }));
-      }
-
-      if (defenseLogs?.length) {
-        updates.defenseLog = defenseLogs.map((d: any) => ({
-          time: d.time,
-          action: d.action,
-          target: d.target,
-          severity: d.severity,
-        }));
-      }
-
-      set(updates as any);
-      console.log('✅ Grid store synced with MongoDB');
-    } catch (err) {
-      console.warn('⚠️ DB load failed, using local data:', err);
-      set({ dbReady: true });
+      case 'demand-attack':
+        simTriggerAttack('load_sync', 0.6);
+        set({ attackStatus: 'detected' });
+        // Auto-clear after 10 seconds
+        setTimeout(() => {
+          simStopAttack();
+          set({ attackStatus: 'none' });
+        }, 10000);
+        break;
     }
   },
 
+  // ════════════════════════════════════════════════════════════════
+  // Config + auth actions
+  // ════════════════════════════════════════════════════════════════
+  setSystemMode: (mode) => set({ systemMode: mode }),
+
+  resetDefaults: () => set({
+    responseThreshold: 0.05,
+    capacityReserved: 15,
+    criticalWarningLevel: 0.25,
+    detectionSensitivity: 'medium',
+    deceptiveSignalInjection: true,
+    autonomousEscalation: true,
+    forecastHorizon: '30s',
+    skyCamEnabled: true,
+    marlLearningRate: 0.001,
+    marlDiscountFactor: 0.95,
+  }),
+
   saveSnapshot: () => {
-    const state = get();
-    dbPost('snapshots', {
-      frequency: state.frequency,
-      latency: state.latency,
-      solarGeneration: state.solarGeneration,
-      loadDemand: state.loadDemand,
-      energySaved: state.energySaved,
-      vppResponse: state.vppResponse,
-      dfdt: state.dfdt,
-      status: state.status,
-      activeAgents: state.activeAgents,
-      agentSyncRate: state.agentSyncRate,
-      phaseCoherence: state.phaseCoherence,
-      attackStatus: state.attackStatus,
-      attackIntensity: state.attackIntensity,
-      nodesAtRisk: state.nodesAtRisk,
-      assetsReachable: state.assetsReachable,
-      onlineDevices: state.onlineDevices,
-      offlineDevices: state.offlineDevices,
-      controllableLoad: state.controllableLoad,
-    });
+    // Fire a config save to the DB
+    const s = get();
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: `config-${Date.now()}`,
+        learningRate: s.marlLearningRate,
+        discountFactor: s.marlDiscountFactor,
+        capacityReservedPercent: s.capacityReserved,
+        bidirectionalCharging: s.bidirectionalCharging,
+        autonomousEscalation: s.autonomousEscalation,
+        forecastHorizon: s.forecastHorizon === '10s' ? 10 : s.forecastHorizon === '60s' ? 60 : 30,
+        tickIntervalMs: 2000,
+      }),
+    }).catch(() => {});
+  },
+
+  login: (name, role) => set({ operatorName: name, operatorRole: role }),
+  logout: () => set({ operatorName: '', operatorRole: 'operator', isLoggedIn: false }),
+
+  loadFromDB: async () => {
+    try {
+      const { snapshot } = await loadLatestSnapshot();
+      if (snapshot && snapshot.agents && snapshot.agents.length > 0) {
+        const ml = getMARLEngine();
+        if (ml) {
+          ml.restoreFromSnapshot(snapshot.agents);
+        }
+      }
+      set({ dbReady: true });
+    } catch {
+      console.warn('[GridStore] loadFromDB failed');
+    }
   },
 }));

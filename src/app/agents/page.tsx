@@ -7,34 +7,23 @@ import { useGridStore } from "@/lib/grid-store"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { useAI } from "@/hooks/useAI"
 import { fastapi } from "@/lib/fastapi"
-import { Activity, Zap, Search, TrendingUp, Award, ToggleLeft, ToggleRight, Users, Bot, RefreshCw } from "lucide-react"
+import { Activity, Zap, Search, TrendingUp, Brain, Target, BarChart3, Bot, RefreshCw } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import {
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell
+  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart,
 } from "recharts"
-
-const PIE_COLORS = ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(45 100% 50%)', '#ef4444']
 
 export default function AgentsPage() {
   const {
     activeAgents, agentClusters, avgAgentResponse, virtualInertia,
     rewardWeightStatus, systemCapacity, agentResponseTimeline,
-    agentSyncRate, initializeSystemData, updateFromServer, tick
+    agentSyncRate, marlTelemetry, initializeSystemData, updateFromServer, tick
   } = useGridStore()
   const [dots, setDots] = useState<{ top: number; left: number; opacity: number; isRed: boolean }[]>([])
-  const [manualOverride, setManualOverride] = useState(false)
 
   const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
   const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
@@ -43,26 +32,15 @@ export default function AgentsPage() {
 
   useEffect(() => {
     initializeSystemData()
-    setDots(Array.from({ length: 60 }).map(() => ({
+    setDots(Array.from({ length: 40 }).map(() => ({
       top: Math.random() * 80 + 10, left: Math.random() * 80 + 10,
-      opacity: Math.random() * 0.7 + 0.3, isRed: Math.random() > 0.85
+      opacity: Math.random() * 0.7 + 0.3, isRed: Math.random() > 0.8,
     })))
   }, [initializeSystemData])
   useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
-  // Status breakdown for pie chart
-  const activeClusters = agentClusters.filter(c => c.status === 'active')
-  const idleClusters = agentClusters.filter(c => c.status === 'idle')
-  const activeCount = activeClusters.reduce((s, c) => s + c.count, 0)
-  const idleCount = idleClusters.reduce((s, c) => s + c.count, 0)
-  const pieData = [
-    { name: 'Active', value: activeCount },
-    { name: 'Idle', value: idleCount },
-    { name: 'Syncing', value: Math.round(activeAgents * 0.02) },
-  ].filter(d => d.value > 0)
-
-  // Cluster leaderboard sorted by response
-  const leaderboard = [...agentClusters].sort((a, b) => b.response - a.response)
+  const rewardData = marlTelemetry.rewardHistory.map((v, i) => ({ tick: i, reward: v }))
+  const qs = marlTelemetry.qTableStats
 
   return (
     <Shell>
@@ -70,32 +48,16 @@ export default function AgentsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-headline font-bold text-foreground">MARL Agent Control</h2>
-            <p className="text-muted-foreground text-sm">Monitoring {activeAgents.toLocaleString()} Multi-Agent Reinforcement Learning (MARL) edge agents.</p>
+            <p className="text-muted-foreground text-sm">
+              Coordinating {activeAgents.toLocaleString()} households via Independent Q-Learning (CTDE).
+              Episode {marlTelemetry.episodeCount}.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={manualOverride ? "destructive" : "outline"}
-              size="sm"
-              className="gap-2 text-[10px] uppercase font-bold"
-              onClick={() => setManualOverride(!manualOverride)}
-              suppressHydrationWarning
-            >
-              {manualOverride ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-              Manual Override {manualOverride ? 'ON' : 'OFF'}
-            </Button>
-            <div className="relative w-full md:w-48">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search agents..." className="pl-8 h-9 text-xs" suppressHydrationWarning />
-            </div>
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search agents..." className="pl-8 h-9 text-xs" suppressHydrationWarning />
           </div>
         </div>
-
-        {manualOverride && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs text-red-400 font-bold uppercase">Manual Override Active — Autonomous MARL decisions are paused. Operator control required.</span>
-          </div>
-        )}
 
         {/* AI Coordinator Panel */}
         <Card className="bg-card border-border bg-accent/5">
@@ -113,7 +75,8 @@ export default function AgentsPage() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {/* KPI cards */}
+        <div className="grid gap-6 md:grid-cols-4">
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Active Agents</CardDescription>
@@ -128,12 +91,12 @@ export default function AgentsPage() {
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardDescription className="text-[10px] uppercase font-bold tracking-widest">Avg Response</CardDescription>
-              <CardTitle className="text-3xl font-headline font-bold">{avgAgentResponse.toFixed(0)}ms</CardTitle>
+              <CardTitle className="text-3xl font-headline font-bold">{avgAgentResponse.toFixed(1)}ms</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-1 text-[10px] text-emerald-400">
                 <TrendingUp className="h-3 w-3" />
-                <span>Sync Rate: {agentSyncRate.toFixed(1)}%</span>
+                <span>&lt;50ms target {avgAgentResponse < 50 ? '✓' : '✗'}</span>
               </div>
             </CardContent>
           </Card>
@@ -144,7 +107,7 @@ export default function AgentsPage() {
               <CardTitle className="text-3xl font-headline font-bold text-accent">{virtualInertia.toFixed(2)} MW·s</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-[10px] text-muted-foreground">Synthetic stabilizing mass</div>
+              <div className="text-[10px] text-muted-foreground">Synthetic stabilising mass from VPP</div>
             </CardContent>
           </Card>
 
@@ -155,74 +118,99 @@ export default function AgentsPage() {
             </CardHeader>
             <CardContent>
               <Badge variant="outline" className="text-[8px] border-accent/30 text-accent">
-                {rewardWeightStatus === 'MUTATED' ? 'ADAPTIVE MODE' : 'BASELINE MODE'}
+                {rewardWeightStatus === 'MUTATED' ? 'ADAPTIVE MODE' : rewardWeightStatus === 'INITIALIZING' ? 'WARM-UP' : 'BASELINE MODE'}
               </Badge>
             </CardContent>
           </Card>
         </div>
 
-        {/* Status Breakdown + Response Timeline */}
-        <div className="grid gap-6 lg:grid-cols-3">
+        {/* ── Q-Learning telemetry ── */}
+        <div className="grid gap-6 md:grid-cols-3">
           <Card className="bg-card border-border">
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                <Users className="h-4 w-4 text-primary" />
-                Agent Status Breakdown
+                <Brain className="h-4 w-4 text-accent" />
+                Q-Table Statistics
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="h-[220px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={3}>
-                      {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', fontSize: '11px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
+            <CardContent className="grid grid-cols-2 gap-4">
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="text-[8px] font-bold text-muted-foreground uppercase">Avg Q-Value</div>
+                <div className="text-sm font-headline font-bold">{qs.avgQ.toFixed(4)}</div>
               </div>
-              <div className="flex justify-center gap-4 mt-2">
-                {pieData.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-1.5 text-[10px]">
-                    <div className="h-2 w-2 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                    <span className="text-muted-foreground">{d.name}: {d.value.toLocaleString()}</span>
-                  </div>
-                ))}
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="text-[8px] font-bold text-muted-foreground uppercase">Max Q-Value</div>
+                <div className="text-sm font-headline font-bold text-emerald-400">{qs.maxQ.toFixed(4)}</div>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="text-[8px] font-bold text-muted-foreground uppercase">Min Q-Value</div>
+                <div className="text-sm font-headline font-bold text-red-400">{qs.minQ.toFixed(4)}</div>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="text-[8px] font-bold text-muted-foreground uppercase">Non-Zero Entries</div>
+                <div className="text-sm font-headline font-bold">{qs.nonZeroPercent.toFixed(1)}%</div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border-border lg:col-span-2">
-            <CardHeader>
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                <Activity className="h-4 w-4 text-accent" />
-                Agent Response Timeline
+                <Target className="h-4 w-4 text-primary" />
+                Convergence
               </CardTitle>
-              <CardDescription>Average response latency (ms) over recent ticks</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-center py-2">
+                <div className="text-4xl font-headline font-black text-primary">{marlTelemetry.convergenceRate.toFixed(1)}%</div>
+                <div className="text-[10px] text-muted-foreground uppercase font-bold mt-1">Policies Converged</div>
+              </div>
+              <Progress value={marlTelemetry.convergenceRate} className="h-2" />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>ε-greedy exploration</span>
+                <span>Episode {marlTelemetry.episodeCount}</span>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="text-[8px] font-bold text-muted-foreground uppercase">Freq Tracking Error</div>
+                <div className="text-sm font-headline font-bold">{(marlTelemetry.frequencyTrackingError * 1000).toFixed(1)} mHz</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-emerald-400" />
+                Avg Reward (Recent)
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[220px] w-full">
+              <div className="h-[180px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={agentResponseTimeline}>
+                  <AreaChart data={rewardData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                    <XAxis dataKey="time" hide />
-                    <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', fontSize: '11px' }} />
-                    <Line type="monotone" dataKey="responseMs" stroke="hsl(var(--accent))" strokeWidth={2} dot={false} />
-                  </LineChart>
+                    <XAxis dataKey="tick" hide />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} />
+                    <Area type="monotone" dataKey="reward" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.15} strokeWidth={2} />
+                  </AreaChart>
                 </ResponsiveContainer>
+              </div>
+              <div className="text-center text-[10px] text-muted-foreground mt-2">
+                Current avg reward: <span className="font-bold text-foreground">{marlTelemetry.avgReward.toFixed(3)}</span>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Clusters + Leaderboard */}
+        {/* ── Cluster list + map ── */}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle className="text-sm font-bold uppercase tracking-widest">Transformer Clusters</CardTitle>
+              <CardTitle className="text-sm font-bold uppercase tracking-widest">Transformer Clusters (MARL)</CardTitle>
+              <CardDescription>Each cluster runs Independent Q-Learning agents coordinating {(agentClusters[0]?.count ?? 1000).toLocaleString()} households</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               {agentClusters.map((cluster, i) => (
                 <div key={i} className="p-4 rounded-lg bg-muted/20 border border-border flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -231,11 +219,11 @@ export default function AgentsPage() {
                     </div>
                     <div>
                       <div className="text-xs font-bold">{cluster.name}</div>
-                      <div className="text-[10px] text-muted-foreground">{cluster.count.toLocaleString()} Edge Nodes</div>
+                      <div className="text-[10px] text-muted-foreground">{cluster.count.toLocaleString()} Households · Action: <span className="text-accent font-bold">{cluster.dominantAction ?? 'IDLE'}</span></div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs font-bold text-emerald-400">{cluster.response.toFixed(0)}% Response</div>
+                    <div className="text-xs font-bold text-emerald-400">{cluster.response}% Response</div>
                     <Badge variant={cluster.status === 'active' ? 'default' : 'secondary'} className="text-[8px] h-4">
                       {cluster.status.toUpperCase()}
                     </Badge>
@@ -245,63 +233,33 @@ export default function AgentsPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-card border-border">
+          <Card className="bg-card border-border flex flex-col">
             <CardHeader>
-              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                <Award className="h-4 w-4 text-amber-400" />
-                Performance Leaderboard
-              </CardTitle>
-              <CardDescription>Clusters ranked by response rate</CardDescription>
+              <CardTitle className="text-sm font-bold uppercase tracking-widest">Global Agent Map</CardTitle>
+              <CardDescription>Real-time topological asset distribution</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {leaderboard.map((cluster, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border">
-                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-amber-500/20 text-amber-400' : i === 1 ? 'bg-slate-400/20 text-slate-300' : i === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-muted/30 text-muted-foreground'}`}>
-                    #{i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold truncate">{cluster.name}</div>
-                    <div className="text-[10px] text-muted-foreground">{cluster.count.toLocaleString()} nodes</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-mono font-bold text-primary">{cluster.response.toFixed(1)}%</div>
+            <CardContent className="flex-1 flex items-center justify-center">
+              <div className="relative h-64 w-full bg-muted/10 rounded-xl border border-border overflow-hidden flex items-center justify-center">
+                <div className="absolute inset-0 opacity-20 pointer-events-none">
+                  <div className="grid grid-cols-10 grid-rows-10 h-full w-full">
+                    {Array.from({ length: 100 }).map((_, i) => (
+                      <div key={i} className="border-[0.5px] border-border/20" />
+                    ))}
                   </div>
                 </div>
-              ))}
+                {dots.map((dot, i) => (
+                  <div key={i} className={`absolute h-1.5 w-1.5 rounded-full ${dot.isRed ? 'bg-red-500 animate-pulse' : 'bg-primary'}`}
+                    style={{ top: `${dot.top}%`, left: `${dot.left}%`, opacity: dot.opacity }} />
+                ))}
+                <div className="bg-card/80 backdrop-blur-sm p-4 rounded-lg border border-border z-10 text-center">
+                  <Activity className="h-8 w-8 text-accent mx-auto mb-2 animate-pulse" />
+                  <div className="text-xs font-bold">{activeAgents.toLocaleString()} Agents Synced</div>
+                  <div className="text-[10px] text-muted-foreground">Q-Learning Episode {marlTelemetry.episodeCount}</div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
-
-        {/* Global Agent Map */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase tracking-widest">Global Agent Topology Map</CardTitle>
-            <CardDescription>Real-time distributed asset visualization across {agentClusters.length} transformer clusters</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="relative h-64 w-full bg-muted/10 rounded-xl border border-border overflow-hidden flex items-center justify-center">
-              <div className="absolute inset-0 opacity-20 pointer-events-none">
-                <div className="grid grid-cols-12 grid-rows-8 h-full w-full">
-                  {Array.from({ length: 96 }).map((_, i) => (
-                    <div key={i} className="border-[0.5px] border-border/20" />
-                  ))}
-                </div>
-              </div>
-              {dots.map((dot, i) => (
-                <div
-                  key={i}
-                  className={`absolute h-1.5 w-1.5 rounded-full transition-colors ${dot.isRed ? 'bg-red-500 animate-pulse' : 'bg-primary'}`}
-                  style={{ top: `${dot.top}%`, left: `${dot.left}%`, opacity: dot.opacity }}
-                />
-              ))}
-              <div className="bg-card/80 backdrop-blur-sm p-4 rounded-lg border border-border z-10 text-center">
-                <Activity className="h-8 w-8 text-accent mx-auto mb-2 animate-pulse" />
-                <div className="text-xs font-bold">{activeAgents.toLocaleString()} Agents Synced</div>
-                <div className="text-[10px] text-muted-foreground">Across {agentClusters.length} Distributed Transformers</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </Shell>
   )

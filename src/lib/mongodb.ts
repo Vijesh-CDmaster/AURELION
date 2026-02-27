@@ -1,56 +1,52 @@
+/**
+ * MongoDB Connection Utility
+ *
+ * Maintains a cached connection across hot-reloads in development.
+ * Uses mongoose (already in package.json).
+ */
+
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI!;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aurelion';
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable in .env.local');
+  throw new Error('Please define the MONGODB_URI environment variable in .env');
 }
 
 /**
- * Global is used here to maintain a cached connection across hot reloads
- * in development. This prevents connections growing exponentially
- * during API Route usage.
+ * Global cache so hot module replacement in dev doesn't
+ * open a new connection pool on every request.
  */
-interface MongooseCache {
+interface MongoCache {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
 }
 
 declare global {
   // eslint-disable-next-line no-var
-  var mongoose: MongooseCache | undefined;
+  var _mongoCache: MongoCache | undefined;
 }
 
-const cached: MongooseCache = global.mongoose ?? { conn: null, promise: null };
+const cached: MongoCache = global._mongoCache ?? { conn: null, promise: null };
+if (!global._mongoCache) global._mongoCache = cached;
 
-if (!global.mongoose) {
-  global.mongoose = cached;
-}
-
-async function dbConnect(): Promise<typeof mongoose> {
-  if (cached.conn) {
-    return cached.conn;
-  }
+/** Get (or create) a mongoose connection */
+export async function connectDB(): Promise<typeof mongoose> {
+  if (cached.conn) return cached.conn;
 
   if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((m) => {
-      console.log('✅ MongoDB connected');
-      return m;
-    });
+    cached.promise = mongoose
+      .connect(MONGODB_URI, {
+        bufferCommands: false,
+      })
+      .then((m) => {
+        console.log('[MongoDB] Connected to', MONGODB_URI.replace(/\/\/.*@/, '//<credentials>@'));
+        return m;
+      });
   }
 
-  try {
-    cached.conn = await cached.promise;
-  } catch (e) {
-    cached.promise = null;
-    throw e;
-  }
-
+  cached.conn = await cached.promise;
   return cached.conn;
 }
 
-export default dbConnect;
+export default connectDB;
