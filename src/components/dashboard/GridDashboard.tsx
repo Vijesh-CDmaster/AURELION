@@ -11,18 +11,12 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
 export function GridDashboard() {
-  const { status, attackStatus, phaseCoherence, nodesAtRisk, deceptiveSignalInjection, forecastAlert, initializeSystemData, tick } = useGridStore()
+  const { status, attackStatus, phaseCoherence, nodesAtRisk, deceptiveSignalInjection, forecastAlert, initializeSystemData } = useGridStore()
 
-  // Initialize on mount
+  // No need for local tick — global TickProvider handles the 2s interval
   React.useEffect(() => {
     initializeSystemData()
   }, [initializeSystemData])
-
-  // Real-time tick every 2 seconds — drives ALL dynamic data
-  React.useEffect(() => {
-    const interval = setInterval(() => tick(), 2000)
-    return () => clearInterval(interval)
-  }, [tick])
 
   return (
     <div className="space-y-6">

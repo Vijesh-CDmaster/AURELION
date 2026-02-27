@@ -73,7 +73,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Zap className="h-5 w-5 text-white" />
             </div>
             <span className="font-headline font-bold text-lg tracking-tight">
-              GridEntropy<span className="text-accent">Sentinel</span>
+              AuraGrid <span className="text-accent">Sentinel</span>
             </span>
           </SidebarHeader>
           <SidebarContent className="p-2 pt-4">

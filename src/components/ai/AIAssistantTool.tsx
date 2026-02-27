@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bot, Send, Loader2, Info, Sparkles, AlertCircle } from "lucide-react"
+import { Bot, Send, Loader2, Info, Sparkles, AlertCircle, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -9,11 +9,14 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useGridStore } from "@/lib/grid-store"
 import { identifyGridThreats } from "@/ai/flows/identify-grid-threats"
 import { suggestStabilityMeasures } from "@/ai/flows/suggest-stability-measures-flow"
+import { explainGridEvent } from "@/ai/flows/explain-grid-event"
 import { Badge } from "@/components/ui/badge"
 
 export function AIAssistantTool() {
   const [loading, setLoading] = React.useState(false)
+  const [explainLoading, setExplainLoading] = React.useState(false)
   const [analysis, setAnalysis] = React.useState<any>(null)
+  const [explanation, setExplanation] = React.useState<any>(null)
   const grid = useGridStore()
 
   const handleAnalyze = async () => {
@@ -63,6 +66,28 @@ export function AIAssistantTool() {
       console.error(e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExplainEvent = async () => {
+    setExplainLoading(true)
+    try {
+      const lastAlert = grid.alerts.length > 0 ? grid.alerts[0] : null
+      const eventDesc = lastAlert
+        ? `${lastAlert.type}: ${lastAlert.message}`
+        : `Grid operating at ${grid.frequency.toFixed(3)} Hz, status: ${grid.status}`
+
+      const result = await explainGridEvent({
+        gridEventDescription: eventDesc,
+        gridTelemetryData: `Frequency: ${grid.frequency.toFixed(3)} Hz, df/dt: ${grid.dfdt.toFixed(4)} Hz/s, Load: ${grid.loadDemand} MW, Solar: ${grid.solarGeneration} kW, Phase Coherence: ${grid.phaseCoherence.toFixed(3)}, Attack Status: ${grid.attackStatus}`,
+        vppResponseLog: `VPP Enabled: ${grid.vppEnabled}, Response: ${grid.vppResponse} MW, Latency: ${grid.latency.toFixed(1)} ms, Active Agents: ${grid.activeAgents}, Sync Rate: ${grid.agentSyncRate.toFixed(1)}%, V2G: ${grid.bidirectionalCharging ? 'Enabled' : 'Disabled'}`,
+        forecastData: `Irradiance: ${grid.forecastTelemetry.currentIrradiance.toFixed(0)} W/m², ClearSky: ${grid.forecastTelemetry.clearSkyIrradiance.toFixed(0)} W/m², CRPS: ${grid.forecastTelemetry.crps.toFixed(2)}, Reliability: ${(grid.forecastTelemetry.reliabilityScore * 100).toFixed(0)}%, Clouds: ${grid.forecastTelemetry.clouds.length}`,
+      })
+      setExplanation(result)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setExplainLoading(false)
     }
   }
 
@@ -190,10 +215,42 @@ export function AIAssistantTool() {
 
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-md font-headline">AI Explanation Engine</CardTitle>
+            <CardTitle className="text-md font-headline flex items-center gap-2">
+              <FileText className="h-4 w-4 text-accent" />
+              AI Explanation Engine
+            </CardTitle>
+            <CardDescription className="text-[10px]">
+              Calls Gemini to explain grid events in human terms, identify root causes, and suggest actions.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            {analysis ? (
+          <CardContent className="space-y-3">
+            {explainLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                <span className="ml-2 text-xs animate-pulse">Generating event explanation...</span>
+              </div>
+            ) : explanation ? (
+              <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="text-xs leading-relaxed text-muted-foreground bg-muted/10 p-4 rounded-lg border border-border">
+                  {explanation.explanation}
+                </div>
+                <div className="p-3 rounded-lg bg-accent/5 border border-accent/20">
+                  <div className="text-[10px] font-bold text-accent uppercase mb-1">Root Cause</div>
+                  <div className="text-xs">{explanation.rootCause}</div>
+                </div>
+                {explanation.suggestedActions.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase">Suggested Actions</div>
+                    {explanation.suggestedActions.map((a: string, i: number) => (
+                      <div key={i} className="text-[11px] text-muted-foreground flex items-center gap-2">
+                        <div className="h-1 w-1 rounded-full bg-emerald-400" />
+                        {a}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : analysis ? (
               <div className="text-xs leading-relaxed text-muted-foreground bg-muted/10 p-4 rounded-lg border border-border">
                 {analysis.measures.explanation}
               </div>
@@ -202,6 +259,16 @@ export function AIAssistantTool() {
                 AuraGrid Sentinel uses Large Language Models to interpret complex grid telemetry, explaining system behavior in human terms to aid operators.
               </div>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-[10px] uppercase font-bold gap-2"
+              onClick={handleExplainEvent}
+              disabled={explainLoading}
+            >
+              <FileText className="h-3 w-3" />
+              {explainLoading ? "Explaining..." : "Explain Last Grid Event"}
+            </Button>
           </CardContent>
         </Card>
       </div>
