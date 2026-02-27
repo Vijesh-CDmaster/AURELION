@@ -16,6 +16,16 @@ export default function ConfigPage() {
   const { 
     responseThreshold, 
     capacityReserved, 
+    criticalWarningLevel,
+    detectionSensitivity,
+    deceptiveSignalInjection,
+    autonomousEscalation,
+    forecastHorizon,
+    skyCamEnabled,
+    primaryGridFeed,
+    marlLearningRate,
+    marlDiscountFactor,
+    dataSources,
     setVPPConfig 
   } = useGridStore()
 

@@ -14,24 +14,37 @@ import { toast } from "@/hooks/use-toast"
 
 export default function SimulationPage() {
   const [isRunning, setIsRunning] = useState(false)
-  const { updateFrequency, simulationHistory, initializeSystemData } = useGridStore()
+  const {
+    simulationParams,
+    simulationResults,
+    simulationHistory,
+    frequency,
+    setSimulationParams,
+    runSimulation: storeRunSimulation,
+    completeSimulation,
+    updateFrequency,
+    initializeSystemData,
+  } = useGridStore()
 
   useEffect(() => {
     initializeSystemData()
   }, [initializeSystemData])
 
-  const runSimulation = () => {
+  const handleRunSimulation = () => {
     setIsRunning(true)
-    toast({ title: "Simulation Started", description: "Injecting mass EV charging scenario..." })
-    
-    // Simulate a dip
-    setTimeout(() => updateFrequency(49.82), 1000)
-    
+    storeRunSimulation()
+    toast({ title: "Simulation Started", description: `Injecting ${simulationParams.scenario.replace(/-/g, ' ')} scenario...` })
+
+    // Simulate a frequency dip based on intensity
+    const dipAmount = (simulationParams.intensity / 100) * 0.5
+    setTimeout(() => updateFrequency(50 - dipAmount), 1000)
+
     setTimeout(() => {
       setIsRunning(false)
       updateFrequency(50.00)
-      toast({ title: "Simulation Complete", description: "Grid stabilized in 4.2 seconds." })
-    }, 5000)
+      completeSimulation()
+      toast({ title: "Simulation Complete", description: "Grid stabilized. Results recorded." })
+    }, simulationParams.duration * 150) // Scale duration
   }
 
   return (
@@ -50,7 +63,7 @@ export default function SimulationPage() {
             <Button 
               size="sm" 
               className={`gap-2 font-bold uppercase tracking-widest text-[10px] ${isRunning ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'}`}
-              onClick={runSimulation}
+              onClick={handleRunSimulation}
               disabled={isRunning}
               suppressHydrationWarning
             >
@@ -71,7 +84,7 @@ export default function SimulationPage() {
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label className="text-xs font-bold uppercase text-muted-foreground">Scenario Type</Label>
-                <Select defaultValue="ev-mass">
+                <Select value={simulationParams.scenario} onValueChange={(v) => setSimulationParams({ scenario: v })}>
                   <SelectTrigger className="bg-muted/20 border-border" suppressHydrationWarning>
                     <SelectValue placeholder="Select scenario" />
                   </SelectTrigger>
@@ -87,21 +100,21 @@ export default function SimulationPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <Label className="text-[10px] font-bold uppercase text-muted-foreground">Intensity (MW)</Label>
-                  <span className="text-xs font-mono font-bold text-primary">450</span>
+                  <span className="text-xs font-mono font-bold text-primary">{Math.round(simulationParams.intensity * 10)}</span>
                 </div>
-                <Slider defaultValue={[45]} max={100} step={1} />
+                <Slider value={[simulationParams.intensity]} max={100} step={1} onValueChange={([v]) => setSimulationParams({ intensity: v })} />
                 
                 <div className="flex justify-between items-center pt-2">
                   <Label className="text-[10px] font-bold uppercase text-muted-foreground">Affected Nodes</Label>
-                  <span className="text-xs font-mono font-bold text-primary">1,200</span>
+                  <span className="text-xs font-mono font-bold text-primary">{Math.round(simulationParams.affectedNodes * 20).toLocaleString()}</span>
                 </div>
-                <Slider defaultValue={[60]} max={100} step={1} />
+                <Slider value={[simulationParams.affectedNodes]} max={100} step={1} onValueChange={([v]) => setSimulationParams({ affectedNodes: v })} />
 
                 <div className="flex justify-between items-center pt-2">
                   <Label className="text-[10px] font-bold uppercase text-muted-foreground">Duration (Sec)</Label>
-                  <span className="text-xs font-mono font-bold text-primary">30</span>
+                  <span className="text-xs font-mono font-bold text-primary">{simulationParams.duration}</span>
                 </div>
-                <Slider defaultValue={[30]} max={120} step={5} />
+                <Slider value={[simulationParams.duration]} max={120} step={5} onValueChange={([v]) => setSimulationParams({ duration: v })} />
               </div>
             </CardContent>
           </Card>
@@ -122,7 +135,9 @@ export default function SimulationPage() {
                   <div className="w-full h-full flex items-center justify-center">
                     <div className="absolute inset-0 bg-primary/5 animate-pulse" />
                     <div className="flex flex-col items-center gap-4 z-10">
-                      <div className="text-4xl font-headline font-black text-primary animate-bounce">49.825 Hz</div>
+                      <div className="text-4xl font-headline font-black text-primary animate-bounce">
+                        {simulationResults ? simulationResults.currentFrequency.toFixed(3) : frequency.toFixed(3)} Hz
+                      </div>
                       <div className="flex gap-2">
                         <Badge className="bg-red-500/20 text-red-400">DIP DETECTED</Badge>
                         <Badge className="bg-accent/20 text-accent">VPP DISPATCHING</Badge>
@@ -135,15 +150,15 @@ export default function SimulationPage() {
               <div className="grid grid-cols-3 gap-4 mt-6">
                 <div className="p-3 rounded-lg bg-muted/20 border border-border text-center">
                   <div className="text-[8px] font-bold uppercase text-muted-foreground mb-1">Max Deviation</div>
-                  <div className="text-lg font-headline font-black">175mHz</div>
+                  <div className="text-lg font-headline font-black">{simulationResults ? `${Math.round(simulationResults.maxDeviation)}mHz` : '—'}</div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/20 border border-border text-center">
                   <div className="text-[8px] font-bold uppercase text-muted-foreground mb-1">Recovery Time</div>
-                  <div className="text-lg font-headline font-black">4.2s</div>
+                  <div className="text-lg font-headline font-black">{simulationResults ? `${simulationResults.recoveryTime.toFixed(1)}s` : '—'}</div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/20 border border-border text-center">
                   <div className="text-[8px] font-bold uppercase text-muted-foreground mb-1">Energy Curtailed</div>
-                  <div className="text-lg font-headline font-black">124kWh</div>
+                  <div className="text-lg font-headline font-black">{simulationResults ? `${Math.round(simulationResults.energyCurtailed)}kWh` : '—'}</div>
                 </div>
               </div>
             </CardContent>
