@@ -211,6 +211,24 @@ export interface GridState {
   // Alerts
   alerts: Alert[];
 
+  // Enhanced features
+  systemMode: 'live' | 'simulation' | 'demo';
+  forecastAccuracy: number;
+  forecastUncertainty: number;
+  falseCalmDetected: boolean;
+  forecastAccuracyHistory: { time: string; accuracy: number }[];
+  marlRewardHistory: { episode: number; reward: number }[];
+  attackFrequencyData: { day: string; attacks: number }[];
+  recoveryProgress: number;
+  deceptiveSignalStrength: number;
+  vppCapacityHistory: { time: string; capacity: number; dispatched: number }[];
+  vppClusterLog: { time: string; action: string; cluster: string }[];
+  agentResponseTimeline: { time: string; responseMs: number }[];
+  deviceLoadHistory: { time: string; load: number }[];
+  userRole: string;
+  userName: string;
+  isLoggedIn: boolean;
+
   // Actions
   updateFrequency: (val: number) => void;
   toggleVPP: () => void;
@@ -225,6 +243,10 @@ export interface GridState {
   runSimulation: () => void;
   completeSimulation: () => void;
   addDefenseLogEntry: (entry: DefenseLogEntry) => void;
+  setSystemMode: (mode: 'live' | 'simulation' | 'demo') => void;
+  login: (name: string, role: string) => void;
+  logout: () => void;
+  resetDefaults: () => void;
 
   // DB sync
   dbReady: boolean;
@@ -309,6 +331,24 @@ export const useGridStore = create<GridState>((set, get) => ({
   simulationResults: null,
 
   alerts: [],
+
+  // Enhanced features
+  systemMode: 'live',
+  forecastAccuracy: 0,
+  forecastUncertainty: 0,
+  falseCalmDetected: false,
+  forecastAccuracyHistory: [],
+  marlRewardHistory: [],
+  attackFrequencyData: [],
+  recoveryProgress: 0,
+  deceptiveSignalStrength: 0,
+  vppCapacityHistory: [],
+  vppClusterLog: [],
+  agentResponseTimeline: [],
+  deviceLoadHistory: [],
+  userRole: '',
+  userName: '',
+  isLoggedIn: false,
 
   // DB sync
   dbReady: false,
@@ -458,6 +498,50 @@ export const useGridStore = create<GridState>((set, get) => ({
       };
     });
 
+    // Enhanced features: forecast accuracy history
+    const forecastAccHistory = Array.from({ length: 12 }, (_, i) => ({
+      time: `${String(8 + i).padStart(2, '0')}:00`,
+      accuracy: rand(82, 98),
+    }));
+
+    // MARL reward history
+    const marlRewards = Array.from({ length: 20 }, (_, i) => ({
+      episode: i + 1,
+      reward: rand(-0.5, 2.5) + (i * 0.08),
+    }));
+
+    // Attack frequency data
+    const attackFreqData = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => ({
+      day,
+      attacks: randInt(0, 8),
+    }));
+
+    // VPP capacity history
+    const vppCapHistory = Array.from({ length: 15 }, (_, i) => ({
+      time: new Date(now.getTime() - (15 - i) * 120000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      capacity: rand(60, 120),
+      dispatched: rand(10, 60),
+    }));
+
+    // VPP cluster log
+    const vppClLog = Array.from({ length: 5 }, () => ({
+      time: new Date(now.getTime() - randInt(0, 600000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      action: ['Cluster Formed', 'Agent Recruited', 'Capacity Rebalanced', 'V2G Activated', 'Cluster Dissolved'][randInt(0, 5)],
+      cluster: clusterLabels[randInt(0, clusterLabels.length)],
+    }));
+
+    // Agent response timeline
+    const agentTimeline = Array.from({ length: 20 }, (_, i) => ({
+      time: new Date(now.getTime() - (20 - i) * 6000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      responseMs: rand(15, 90),
+    }));
+
+    // Device load history
+    const devLoadHistory = Array.from({ length: 20 }, (_, i) => ({
+      time: new Date(now.getTime() - (20 - i) * 6000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      load: rand(1, 10),
+    }));
+
     return {
       frequencyHistory: freqHistory,
       agentClusters: clusters,
@@ -493,6 +577,18 @@ export const useGridStore = create<GridState>((set, get) => ({
       dataSources: sources,
       primaryGridFeed: 'https://api.aura-sentinel.io/v1/feed',
       dfdt: rand(-0.005, 0.005),
+      forecastAccuracy: rand(85, 97),
+      forecastUncertainty: rand(3, 15),
+      falseCalmDetected: Math.random() > 0.85,
+      forecastAccuracyHistory: forecastAccHistory,
+      marlRewardHistory: marlRewards,
+      attackFrequencyData: attackFreqData,
+      recoveryProgress: 0,
+      deceptiveSignalStrength: rand(0, 100),
+      vppCapacityHistory: vppCapHistory,
+      vppClusterLog: vppClLog,
+      agentResponseTimeline: agentTimeline,
+      deviceLoadHistory: devLoadHistory,
     };
   });
 
@@ -663,6 +759,15 @@ export const useGridStore = create<GridState>((set, get) => ({
       controllableLoad: newControllableLoad,
       assetsReachable: newReachable,
       forecastAlert: newForecastAlert,
+      // Enhanced dynamic fields
+      forecastAccuracy: clamp(state.forecastAccuracy + rand(-0.5, 0.5), 80, 99),
+      forecastUncertainty: clamp(state.forecastUncertainty + rand(-0.3, 0.3), 2, 20),
+      falseCalmDetected: Math.random() > 0.97 ? !state.falseCalmDetected : state.falseCalmDetected,
+      recoveryProgress: state.attackStatus !== 'none' ? clamp(state.recoveryProgress + rand(1, 5), 0, 100) : 0,
+      deceptiveSignalStrength: state.attackStatus !== 'none' && state.deceptiveSignalInjection ? clamp(state.deceptiveSignalStrength + rand(-3, 5), 20, 100) : clamp(state.deceptiveSignalStrength - 2, 0, 100),
+      agentResponseTimeline: [...state.agentResponseTimeline.slice(-19), { time: now, responseMs: newAgentResponse }],
+      deviceLoadHistory: [...state.deviceLoadHistory.slice(-19), { time: now, load: newControllableLoad }],
+      vppCapacityHistory: [...state.vppCapacityHistory.slice(-14), { time: now, capacity: rand(60, 120), dispatched: Math.abs(vpp) > 0 ? rand(10, 60) : 0 }],
     };
   });
   },
@@ -793,6 +898,32 @@ export const useGridStore = create<GridState>((set, get) => ({
     dbPost('defense-log', entry);
     return { defenseLog: [entry, ...state.defenseLog].slice(0, 20) };
   }),
+
+  setSystemMode: (mode) => {
+    set({ systemMode: mode });
+    dbPut('config', { systemMode: mode });
+  },
+
+  login: (name, role) => set({ isLoggedIn: true, userName: name, userRole: role }),
+  logout: () => set({ isLoggedIn: false, userName: '', userRole: '' }),
+
+  resetDefaults: () => {
+    const defaults = {
+      responseThreshold: 0.05,
+      capacityReserved: 15,
+      criticalWarningLevel: 0.25,
+      detectionSensitivity: 'medium' as DetectionSensitivity,
+      deceptiveSignalInjection: true,
+      autonomousEscalation: true,
+      forecastHorizon: '30s' as ForecastHorizon,
+      skyCamEnabled: true,
+      primaryGridFeed: '',
+      marlLearningRate: 0.001,
+      marlDiscountFactor: 0.95,
+    };
+    set(defaults);
+    dbPut('config', defaults);
+  },
 
   // ─── DB Sync Actions ──────────────────────────────────────────────────
 

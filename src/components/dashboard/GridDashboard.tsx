@@ -6,28 +6,86 @@ import { FrequencyChart } from "./FrequencyChart"
 import { EventInjector } from "../simulator/EventInjector"
 import { useGridStore } from "@/lib/grid-store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Bot, CloudSun, ShieldAlert } from "lucide-react"
+import { Bot, CloudSun, ShieldAlert, Activity, Zap, Heart, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 
 export function GridDashboard() {
-  const { status, attackStatus, phaseCoherence, nodesAtRisk, deceptiveSignalInjection, forecastAlert, initializeSystemData, tick } = useGridStore()
+  const {
+    status, attackStatus, phaseCoherence, nodesAtRisk, deceptiveSignalInjection,
+    forecastAlert, initializeSystemData, tick, frequency, solarGeneration, loadDemand,
+    energySaved, latency, activeAgents, agentSyncRate, alerts, dfdt,
+    recoveryEfficiency, avgDetectionTime, forecastAccuracy
+  } = useGridStore()
 
-  // Initialize on mount
   React.useEffect(() => {
     initializeSystemData()
   }, [initializeSystemData])
 
-  // Real-time tick every 2 seconds — drives ALL dynamic data
   React.useEffect(() => {
     const interval = setInterval(() => tick(), 2000)
     return () => clearInterval(interval)
   }, [tick])
 
+  const recentAlerts = alerts.filter(a => a.status === 'active').slice(0, 4)
+  const freqDev = Math.abs(50 - frequency)
+
   return (
     <div className="space-y-6">
       <StatusGrid />
-      
+
+      {/* System Health Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Solar Generation</span>
+              <CloudSun className="h-4 w-4 text-amber-400" />
+            </div>
+            <div className="text-2xl font-headline font-bold">{Math.round(solarGeneration).toLocaleString()} <span className="text-sm text-muted-foreground">kW</span></div>
+            <div className="mt-2 flex items-center gap-2">
+              <Progress value={Math.min(100, (solarGeneration / 4000) * 100)} className="h-1 flex-1" />
+              <span className="text-[9px] text-muted-foreground">{Math.round((solarGeneration / 4000) * 100)}%</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Load Demand</span>
+              <Zap className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-2xl font-headline font-bold">{Math.round(loadDemand).toLocaleString()} <span className="text-sm text-muted-foreground">kW</span></div>
+            <div className="text-[10px] mt-1 text-muted-foreground">Imbalance: <span className={solarGeneration > loadDemand ? 'text-emerald-400' : 'text-amber-400'}>{Math.round(solarGeneration - loadDemand).toLocaleString()} kW</span></div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Energy Saved</span>
+              <Heart className="h-4 w-4 text-emerald-400" />
+            </div>
+            <div className="text-2xl font-headline font-bold text-emerald-400">{Math.round(energySaved).toLocaleString()} <span className="text-sm text-muted-foreground">kWh</span></div>
+            <div className="text-[10px] mt-1 text-emerald-400/80 font-bold">+${(energySaved * 0.12).toFixed(0)} estimated value</div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Forecast Accuracy</span>
+              <Activity className="h-4 w-4 text-accent" />
+            </div>
+            <div className="text-2xl font-headline font-bold text-accent">{forecastAccuracy.toFixed(1)}%</div>
+            <div className="text-[10px] mt-1 text-muted-foreground">df/dt: <span className="font-mono">{dfdt.toFixed(4)} Hz/s</span></div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <FrequencyChart />
@@ -45,6 +103,14 @@ export function GridDashboard() {
                 <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
                   <div className="text-xs font-bold mb-1">{forecastAlert.event}</div>
                   <div className="text-[10px] text-muted-foreground">{forecastAlert.detail}</div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="outline" className="text-[8px] h-4 border-emerald-500/30 text-emerald-400">
+                      {(forecastAlert.probability * 100).toFixed(0)}% Probability
+                    </Badge>
+                    <Badge variant="outline" className="text-[8px] h-4">
+                      {forecastAlert.leadMinutes}m Lead
+                    </Badge>
+                  </div>
                 </div>
               ) : (
                 <div className="p-3 rounded-lg bg-muted/20 border border-border mb-4">
@@ -69,7 +135,7 @@ export function GridDashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-[11px] text-muted-foreground italic leading-relaxed">
-                &quot;System health is currently {status.toUpperCase()}. MARL agents are synchronized. {attackStatus !== 'none' ? `Adversarial phase alignment detected — coherence at ${(phaseCoherence * 100).toFixed(1)}%.` : 'No adversarial phase alignment detected.'}&quot;
+                &quot;System health is currently {status.toUpperCase()}. MARL agents are synchronized ({agentSyncRate.toFixed(1)}%). {attackStatus !== 'none' ? `Adversarial phase alignment detected — coherence at ${(phaseCoherence * 100).toFixed(1)}%.` : `Forecast accuracy at ${forecastAccuracy.toFixed(1)}%.`}&quot;
               </p>
               <Button asChild className="w-full bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity" suppressHydrationWarning>
                 <Link href="/assistant">
@@ -85,7 +151,7 @@ export function GridDashboard() {
         <div className="lg:col-span-1">
           <EventInjector />
         </div>
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
           <Card className="bg-card border-border shadow-md h-full">
             <CardHeader>
               <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
@@ -94,9 +160,9 @@ export function GridDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <div className="text-3xl font-headline font-bold text-foreground">
+                  <div className="text-2xl font-headline font-bold text-foreground">
                     {attackStatus === 'none' ? 'NO ATTACK' : 'MITIGATING'}
                   </div>
                   <div className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
@@ -107,20 +173,46 @@ export function GridDashboard() {
                   <ShieldAlert className={`h-6 w-6 ${attackStatus === 'none' ? 'text-muted-foreground' : 'text-red-500'}`} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 rounded-lg border border-border bg-muted/20">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-2 rounded-lg border border-border bg-muted/20">
                   <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Nodes at Risk</div>
                   <div className="text-sm font-bold">{nodesAtRisk.toLocaleString()}</div>
                 </div>
-                <div className="p-3 rounded-lg border border-border bg-muted/20">
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Defense Level</div>
-                  <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : deceptiveSignalInjection ? 'DECEPTIVE ON' : 'ACTIVE'}</div>
+                <div className="p-2 rounded-lg border border-border bg-muted/20">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Defense</div>
+                  <div className="text-sm font-bold">{attackStatus === 'none' ? 'Passive' : deceptiveSignalInjection ? 'DECEPTIVE' : 'ACTIVE'}</div>
                 </div>
               </div>
-              <Button asChild variant="outline" size="sm" className="w-full bg-primary/10 border border-primary/20 text-primary rounded-lg font-bold text-[10px] uppercase tracking-widest mt-6 hover:bg-primary/20 transition-colors" suppressHydrationWarning>
+              <Button asChild variant="outline" size="sm" className="w-full mt-4 text-[10px] font-bold uppercase tracking-widest" suppressHydrationWarning>
                 <Link href="/defense">
                   Open Defense Console
                 </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="lg:col-span-1">
+          <Card className="bg-card border-border shadow-md h-full">
+            <CardHeader>
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-400" />
+                Recent Alerts
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {recentAlerts.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-6">No active alerts. System nominal.</div>
+              ) : recentAlerts.map((alert) => (
+                <div key={alert.id} className="flex gap-3 p-2 rounded-lg bg-muted/20 border border-border">
+                  <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${alert.severity === 'critical' || alert.severity === 'attack' ? 'bg-red-500 animate-pulse' : alert.severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground">{alert.time}</div>
+                    <div className="text-xs font-medium truncate">{alert.message}</div>
+                  </div>
+                </div>
+              ))}
+              <Button asChild variant="link" className="text-accent text-[10px] p-0 h-auto w-full justify-center" suppressHydrationWarning>
+                <Link href="/history">View All Events →</Link>
               </Button>
             </CardContent>
           </Card>
