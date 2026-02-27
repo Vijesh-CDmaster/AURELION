@@ -5,8 +5,12 @@ import { Shell } from "@/components/layout/Shell"
 import { VPPConfigPanel } from "@/components/vpp/VPPConfigPanel"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { useGridStore } from "@/lib/grid-store"
-import { Zap, Battery, Network, Activity, Users, Clock } from "lucide-react"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
+import { Zap, Battery, Network, Activity, Users, Clock, Bot, RefreshCw } from "lucide-react"
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from "recharts"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
@@ -14,12 +18,16 @@ export default function VPPPage() {
   const {
     vppEnabled, devices, solarGeneration, loadDemand, agentClusters,
     vppCapacityHistory, vppClusterLog, capacityReserved, responseThreshold,
-    initializeSystemData
+    initializeSystemData, updateFromServer, tick
   } = useGridStore()
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.vppOptimisation, refreshInterval: 30000,
+  })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   const totalCapacityMW = agentClusters.reduce((s, c) => s + c.count * 0.8, 0)
   const activeAssets = agentClusters.filter(c => c.status === 'active').length
@@ -116,6 +124,24 @@ export default function VPPPage() {
           <VPPConfigPanel />
         </div>
 
+        {/* AI VPP Optimizer */}
+        <Card className="bg-card border-border border-primary/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              AI VPP Optimizer
+            </CardTitle>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refreshAI} disabled={aiLoading} suppressHydrationWarning>
+              <RefreshCw className={`h-3.5 w-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-line">
+              {aiLoading ? 'Analyzing VPP cluster topology and dispatch efficiency...' : aiInsight || 'Connect to backend for AI-driven VPP optimization recommendations.'}
+            </p>
+          </CardContent>
+        </Card>
+
         {/* Cluster Contribution + Cluster Log */}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="bg-card border-border">
@@ -158,11 +184,11 @@ export default function VPPPage() {
                     <div className="text-xs text-muted-foreground text-center py-8">No cluster events recorded yet.</div>
                   ) : vppClusterLog.slice(-15).reverse().map((entry, i) => (
                     <div key={i} className="flex items-start gap-3 p-2 rounded-lg bg-muted/20 border border-border">
-                      <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${entry.action === 'joined' ? 'bg-emerald-500' : entry.action === 'left' ? 'bg-red-400' : 'bg-amber-500'}`} />
+                      <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${entry.action === 'Agent Recruited' || entry.action === 'V2G Activated' ? 'bg-emerald-500' : entry.action === 'Cluster Dissolved' ? 'bg-red-400' : 'bg-amber-500'}`} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-medium truncate">{entry.cluster}</span>
-                          <Badge variant="outline" className={`text-[7px] shrink-0 ${entry.action === 'joined' ? 'border-emerald-500/30 text-emerald-400' : entry.action === 'left' ? 'border-red-500/30 text-red-400' : 'border-amber-500/30 text-amber-400'}`}>
+                          <Badge variant="outline" className={`text-[7px] shrink-0 ${entry.action === 'Agent Recruited' || entry.action === 'V2G Activated' ? 'border-emerald-500/30 text-emerald-400' : entry.action === 'Cluster Dissolved' ? 'border-red-500/30 text-red-400' : 'border-amber-500/30 text-amber-400'}`}>
                             {entry.action.toUpperCase()}
                           </Badge>
                         </div>

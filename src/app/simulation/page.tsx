@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { PlayCircle, RefreshCcw, Save, Trash2, Sliders, Activity, Zap, Download, BarChart3 } from "lucide-react"
+import { PlayCircle, RefreshCcw, Save, Trash2, Sliders, Activity, Zap, Download, BarChart3, Bot, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/hooks/use-toast"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
 
 export default function SimulationPage() {
   const [isRunning, setIsRunning] = useState(false)
@@ -27,9 +30,14 @@ export default function SimulationPage() {
     initializeSystemData,
   } = useGridStore()
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'simulation', onMessage: (data) => {
+    if (data.frequency) updateFrequency(data.frequency)
+  }})
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.simulationDebrief, refreshInterval: 60000,
+  })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
 
   const handleRunSimulation = () => {
     setIsRunning(true)
@@ -237,6 +245,26 @@ export default function SimulationPage() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* AI Simulation Debrief */}
+        {simulationResults && (
+          <Card className="bg-card border-border border-primary/20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <Bot className="h-4 w-4 text-primary" />
+                AI Simulation Debrief
+              </CardTitle>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refreshAI} disabled={aiLoading} suppressHydrationWarning>
+                <RefreshCw className={`h-3.5 w-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-line">
+                {aiLoading ? 'Analyzing simulation results and comparing with baseline...' : aiInsight || 'Run a simulation to receive AI-powered debrief analysis.'}
+              </p>
             </CardContent>
           </Card>
         )}

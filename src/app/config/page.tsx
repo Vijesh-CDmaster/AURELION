@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/hooks/use-toast"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { fastapi } from "@/lib/fastapi"
 
 export default function ConfigPage() {
   const {
@@ -35,13 +36,15 @@ export default function ConfigPage() {
     saveSnapshot,
   } = useGridStore()
 
-  const handleSave = () => {
+  const handleSave = async () => {
     saveSnapshot()
+    try { await fastapi.saveConfig() } catch {}
     toast({ title: "Configuration Saved", description: "System parameters persisted to database." })
   }
 
-  const handleReset = () => {
+  const handleReset = async () => {
     resetDefaults()
+    try { await fastapi.resetConfig() } catch {}
     toast({ title: "Defaults Restored", description: "All configuration parameters reset to factory defaults." })
   }
 

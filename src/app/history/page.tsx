@@ -5,7 +5,7 @@ import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Download, Filter, Search, X, CheckCircle2, Eye } from "lucide-react"
+import { Calendar, Download, Filter, Search, X, CheckCircle2, Eye, Bot, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -13,17 +13,32 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useGridStore } from "@/lib/grid-store"
 import { toast } from "@/hooks/use-toast"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { fastapi } from "@/lib/fastapi"
 
 export default function EventLogPage() {
-  const { alerts, resolveAlert, initializeSystemData } = useGridStore()
+  const { alerts, resolveAlert, initializeSystemData, updateFromServer } = useGridStore()
   const [search, setSearch] = useState("")
   const [severityFilter, setSeverityFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedAlert, setSelectedAlert] = useState<typeof alerts[0] | null>(null)
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+
+  const handleViewWithAI = async (alert: typeof alerts[0]) => {
+    setSelectedAlert(alert)
+    setAiExplanation(null)
+    setAiLoading(true)
+    try {
+      const res = await fastapi.ai.explainEvent(alert.id)
+      setAiExplanation(res.insight)
+    } catch { setAiExplanation(null) }
+    setAiLoading(false)
+  }
 
   const filtered = useMemo(() => {
     return alerts.filter(a => {
@@ -147,7 +162,7 @@ export default function EventLogPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold hover:bg-accent/10" onClick={() => setSelectedAlert(alert)} suppressHydrationWarning>
+                          <Button variant="ghost" size="sm" className="text-accent h-7 text-[10px] uppercase font-bold hover:bg-accent/10" onClick={() => handleViewWithAI(alert)} suppressHydrationWarning>
                             <Eye className="h-3 w-3 mr-1" /> View
                           </Button>
                           {alert.status === 'active' && (
@@ -197,6 +212,17 @@ export default function EventLogPage() {
                 <div className="p-3 rounded-lg bg-muted/20 border border-border">
                   <div className="text-[9px] font-bold uppercase text-muted-foreground mb-1">Description</div>
                   <div className="text-xs">{selectedAlert.message}</div>
+                </div>
+                {/* AI Explanation */}
+                <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Bot className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-[9px] font-bold uppercase text-primary">AI Analysis</span>
+                    {!aiLoading && <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={() => handleViewWithAI(selectedAlert)} suppressHydrationWarning><RefreshCw className="h-3 w-3" /></Button>}
+                  </div>
+                  <div className="text-xs text-muted-foreground whitespace-pre-line">
+                    {aiLoading ? 'Analyzing event context and root cause...' : aiExplanation || 'AI explanation unavailable — connect backend for analysis.'}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

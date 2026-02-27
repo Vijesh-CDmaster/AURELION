@@ -6,19 +6,38 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Zap, ShieldCheck, Activity } from "lucide-react"
+import { Zap, ShieldCheck, Activity, Loader2 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useGridStore } from "@/lib/grid-store"
+import { fastapi } from "@/lib/fastapi"
 
 export default function LoginPage() {
   const router = useRouter()
   const { login } = useGridStore()
   const [name, setName] = useState("")
+  const [password, setPassword] = useState("")
   const [role, setRole] = useState("operator")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
-  const handleLogin = () => {
-    login(name || "OP-42-SENTINEL", role)
-    router.push("/")
+  const handleLogin = async () => {
+    setLoading(true)
+    setError("")
+    const username = name || "operator"
+    try {
+      const res = await fastapi.login(username, password || "operator123")
+      if (res.token) {
+        localStorage.setItem("grid-token", res.token)
+      }
+      login(res.name || username, res.role || role)
+      router.push("/")
+    } catch {
+      // Fallback to local-only login if backend unavailable
+      login(username, role)
+      router.push("/")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -48,7 +67,7 @@ export default function LoginPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="pass" className="text-xs font-bold uppercase text-muted-foreground">Encrypted Token</Label>
-            <Input id="pass" type="password" placeholder="••••••••" className="bg-muted/20 border-border h-10" suppressHydrationWarning />
+            <Input id="pass" type="password" placeholder="••••••••" className="bg-muted/20 border-border h-10" value={password} onChange={(e) => setPassword(e.target.value)} suppressHydrationWarning />
           </div>
           <div className="space-y-2">
             <Label className="text-xs font-bold uppercase text-muted-foreground">Access Level</Label>
@@ -65,8 +84,10 @@ export default function LoginPage() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-11 uppercase tracking-widest text-xs" onClick={handleLogin} suppressHydrationWarning>
-            Initialize Session
+          {error && <div className="text-xs text-red-400 text-center">{error}</div>}
+          <Button className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-11 uppercase tracking-widest text-xs" onClick={handleLogin} disabled={loading} suppressHydrationWarning>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            {loading ? 'Authenticating...' : 'Initialize Session'}
           </Button>
           <div className="text-[10px] text-center text-muted-foreground italic px-6">
             Access to this system is restricted to authorized personnel. All actions are logged under the GridEntropy Security Protocol.

@@ -4,7 +4,10 @@ import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Shield, AlertTriangle, Lock, Unlock, Fingerprint, History, Radio, HeartPulse, Radar } from "lucide-react"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
+import { Shield, AlertTriangle, Lock, Unlock, Fingerprint, History, Radio, HeartPulse, Radar, Bot, RefreshCw, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -23,12 +26,16 @@ export default function DefensePage() {
     attackStatus, triggerAttack, phaseCoherence, attackIntensity, coherenceData,
     defenseLog, deceptiveSignalInjection, nodesAtRisk, recoveryProgress,
     deceptiveSignalStrength, avgDetectionTime, falsePositiveRate, recoveryEfficiency,
-    attacksMitigated, initializeSystemData
+    attacksMitigated, initializeSystemData, updateFromServer, tick
   } = useGridStore()
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.attackAnalysis, refreshInterval: 30000,
+  })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   return (
     <Shell>
@@ -143,6 +150,47 @@ export default function DefensePage() {
             </CardHeader>
             <CardContent>
               <div className="text-[10px] text-muted-foreground">Avg detection: {avgDetectionTime.toFixed(1)}s</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* AI Attack Analysis + Attack Simulation */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="bg-card border-border bg-accent/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <Bot className="h-4 w-4 text-accent" />
+                AI Threat Analyst
+                <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={refreshAI} disabled={aiLoading}>
+                  <RefreshCw className={`h-3 w-3 ${aiLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground italic leading-relaxed">{aiLoading ? 'Analysing attack vectors…' : aiInsight || 'Waiting for AI analysis…'}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                <Zap className="h-4 w-4 text-red-400" />
+                Attack Simulation
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">Manually trigger a simulated synchronisation attack for testing and demo purposes.</p>
+              <div className="flex gap-2">
+                <Button variant="destructive" size="sm" className="flex-1 gap-2" onClick={() => { triggerAttack('detected'); fastapi.post('/api/defense/simulate-attack', { intensity: 1 }).catch(() => {}) }}>
+                  <Zap className="h-3 w-3" /> Low (1/3)
+                </Button>
+                <Button variant="destructive" size="sm" className="flex-1 gap-2" onClick={() => { triggerAttack('detected'); fastapi.post('/api/defense/simulate-attack', { intensity: 2 }).catch(() => {}) }}>
+                  <Zap className="h-3 w-3" /> Medium (2/3)
+                </Button>
+                <Button variant="destructive" size="sm" className="flex-1 gap-2" onClick={() => { triggerAttack('detected'); fastapi.post('/api/defense/simulate-attack', { intensity: 3 }).catch(() => {}) }}>
+                  <Zap className="h-3 w-3" /> High (3/3)
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
+import { useWebSocket } from "@/hooks/useWebSocket"
 import { Smartphone, Zap, Battery, Car, Thermometer, Wifi, Search, Filter, Plus, Trash2, ToggleLeft, Activity } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -14,13 +15,14 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function DevicesPage() {
-  const { devices, deviceMix, assetsReachable, onlineDevices, offlineDevices, controllableLoad, deviceLoadHistory, initializeSystemData } = useGridStore()
+  const { devices, deviceMix, assetsReachable, onlineDevices, offlineDevices, controllableLoad, deviceLoadHistory, initializeSystemData, updateFromServer, tick } = useGridStore()
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   const filtered = useMemo(() => {
     return devices.filter(d => {

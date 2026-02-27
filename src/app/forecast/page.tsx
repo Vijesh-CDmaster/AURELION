@@ -4,9 +4,13 @@ import { useEffect } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { SolarForecastChart } from "@/components/forecast/SolarForecastChart"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Cloud, MapPin, Camera, AlertTriangle, TrendingUp, Gauge, Eye } from "lucide-react"
+import { Cloud, MapPin, Camera, AlertTriangle, TrendingUp, Gauge, Eye, Bot, RefreshCw } from "lucide-react"
 import { useGridStore } from "@/lib/grid-store"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import {
   ResponsiveContainer,
@@ -24,12 +28,16 @@ export default function ForecastPage() {
   const {
     shadingEvents, clusterCoverage, forecastAccuracy, forecastUncertainty,
     falseCalmDetected, forecastAccuracyHistory, solarForecast, solarGeneration,
-    skyCamEnabled, forecastHorizon, initializeSystemData
+    skyCamEnabled, forecastHorizon, initializeSystemData, updateFromServer, tick
   } = useGridStore()
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.solarUncertainty, refreshInterval: 30000,
+  })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   // Add confidence bands to solar forecast data
   const forecastWithBands = solarForecast.map((p) => ({
@@ -222,6 +230,22 @@ export default function ForecastPage() {
             </Card>
           </div>
         </div>
+
+        {/* AI Uncertainty Analysis */}
+        <Card className="bg-card border-border bg-accent/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Bot className="h-4 w-4 text-accent" />
+              AI Uncertainty Analysis
+              <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={refreshAI} disabled={aiLoading}>
+                <RefreshCw className={`h-3 w-3 ${aiLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground italic leading-relaxed">{aiLoading ? 'Analysing forecast uncertainty…' : aiInsight || 'Waiting for AI analysis…'}</p>
+          </CardContent>
+        </Card>
 
         {/* Forecast Accuracy History */}
         <Card className="bg-card border-border">

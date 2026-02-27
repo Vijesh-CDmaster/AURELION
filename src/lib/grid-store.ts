@@ -224,7 +224,7 @@ export interface GridState {
   vppCapacityHistory: { time: string; capacity: number; dispatched: number }[];
   vppClusterLog: { time: string; action: string; cluster: string }[];
   agentResponseTimeline: { time: string; responseMs: number }[];
-  deviceLoadHistory: { time: string; load: number }[];
+  deviceLoadHistory: { time: string; ev: number; hvac: number; storage: number }[];
   userRole: string;
   userName: string;
   isLoggedIn: boolean;
@@ -247,6 +247,10 @@ export interface GridState {
   login: (name: string, role: string) => void;
   logout: () => void;
   resetDefaults: () => void;
+
+  // FastAPI server data
+  updateFromServer: (data: any) => void;
+  serverConnected: boolean;
 
   // DB sync
   dbReady: boolean;
@@ -349,6 +353,9 @@ export const useGridStore = create<GridState>((set, get) => ({
   userRole: '',
   userName: '',
   isLoggedIn: false,
+
+  // FastAPI server data
+  serverConnected: false,
 
   // DB sync
   dbReady: false,
@@ -539,7 +546,9 @@ export const useGridStore = create<GridState>((set, get) => ({
     // Device load history
     const devLoadHistory = Array.from({ length: 20 }, (_, i) => ({
       time: new Date(now.getTime() - (20 - i) * 6000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      load: rand(1, 10),
+      ev: rand(1, 5),
+      hvac: rand(0.5, 3),
+      storage: rand(-1, 2),
     }));
 
     return {
@@ -766,7 +775,7 @@ export const useGridStore = create<GridState>((set, get) => ({
       recoveryProgress: state.attackStatus !== 'none' ? clamp(state.recoveryProgress + rand(1, 5), 0, 100) : 0,
       deceptiveSignalStrength: state.attackStatus !== 'none' && state.deceptiveSignalInjection ? clamp(state.deceptiveSignalStrength + rand(-3, 5), 20, 100) : clamp(state.deceptiveSignalStrength - 2, 0, 100),
       agentResponseTimeline: [...state.agentResponseTimeline.slice(-19), { time: now, responseMs: newAgentResponse }],
-      deviceLoadHistory: [...state.deviceLoadHistory.slice(-19), { time: now, load: newControllableLoad }],
+      deviceLoadHistory: [...state.deviceLoadHistory.slice(-19), { time: now, ev: rand(1, 5), hvac: rand(0.5, 3), storage: rand(-1, 2) }],
       vppCapacityHistory: [...state.vppCapacityHistory.slice(-14), { time: now, capacity: rand(60, 120), dispatched: Math.abs(vpp) > 0 ? rand(10, 60) : 0 }],
     };
   });
@@ -923,6 +932,152 @@ export const useGridStore = create<GridState>((set, get) => ({
     };
     set(defaults);
     dbPut('config', defaults);
+  },
+
+  // ─── FastAPI Server Data ──────────────────────────────────────────────
+
+  updateFromServer: (data: any) => {
+    if (!data) return;
+    const updates: Partial<GridState> = { serverConnected: true };
+
+    // Core metrics
+    if (data.frequency != null) updates.frequency = data.frequency;
+    if (data.dfdt != null) updates.dfdt = data.dfdt;
+    if (data.freq_status) updates.status = data.freq_status as GridStatus;
+    if (data.solar_irradiance != null) updates.solarGeneration = data.solar_irradiance;
+    if (data.forecast_uncertainty != null) updates.forecastUncertainty = data.forecast_uncertainty;
+    if (data.forecast_confidence != null) updates.forecastAccuracy = data.forecast_confidence;
+    if (data.false_calm != null) updates.falseCalmDetected = data.false_calm;
+
+    // Frequency history
+    if (data.frequency_history?.length) {
+      updates.frequencyHistory = data.frequency_history.map((p: any) => ({
+        time: p.time, value: p.hz,
+      }));
+    }
+
+    // Agents
+    if (data.active_agents != null) updates.activeAgents = data.active_agents;
+    if (data.virtual_inertia != null) updates.virtualInertia = data.virtual_inertia;
+    if (data.agent_clusters?.length) {
+      updates.agentClusters = data.agent_clusters.map((c: any) => ({
+        name: c.name || c.cluster_id,
+        count: c.total || c.active || 0,
+        response: c.responding || 0,
+        status: c.responding > 0 ? 'active' as const : 'idle' as const,
+      }));
+    }
+    if (data.agent_response_timeline?.length) {
+      updates.agentResponseTimeline = data.agent_response_timeline.map((t: any) => ({
+        time: t.time, responseMs: t.response_ms,
+      }));
+    }
+    if (data.marl_reward_history?.length) {
+      updates.marlRewardHistory = data.marl_reward_history.map((r: any) => ({
+        episode: r.episode, reward: r.reward,
+      }));
+    }
+
+    // Defense
+    if (data.attack_active != null) {
+      updates.attackStatus = data.attack_active
+        ? (data.defense_active ? 'under-defense' : 'detected')
+        : 'none';
+    }
+    if (data.coherence_score != null) updates.phaseCoherence = data.coherence_score;
+    if (data.attack_intensity != null) updates.attackIntensity = data.attack_intensity;
+    if (data.nodes_at_risk != null) updates.nodesAtRisk = data.nodes_at_risk;
+    if (data.recovery_progress != null) updates.recoveryProgress = data.recovery_progress;
+    if (data.desync_strength != null) updates.deceptiveSignalStrength = data.desync_strength;
+    if (data.attacks_mitigated != null) updates.attacksMitigated = data.attacks_mitigated;
+    if (data.avg_detection_time_ms != null) updates.avgDetectionTime = data.avg_detection_time_ms;
+    if (data.false_positive_rate != null) updates.falsePositiveRate = data.false_positive_rate;
+    if (data.recovery_efficiency != null) updates.recoveryEfficiency = data.recovery_efficiency;
+
+    // VPP
+    if (data.vpp_capacity_history?.length) {
+      updates.vppCapacityHistory = data.vpp_capacity_history.map((h: any) => ({
+        time: h.time, capacity: h.capacity, dispatched: h.dispatched,
+      }));
+    }
+    if (data.vpp_formation_log?.length) {
+      updates.vppClusterLog = data.vpp_formation_log.map((l: any) => ({
+        time: l.time, action: l.action, cluster: l.cluster,
+      }));
+    }
+    if (data.total_vpp_capacity != null) updates.systemCapacity = data.total_vpp_capacity;
+
+    // Devices
+    if (data.device_load_history?.length) {
+      updates.deviceLoadHistory = data.device_load_history.map((h: any) => ({
+        time: h.time,
+        ev: h.ev || 0,
+        hvac: h.hvac || 0,
+        storage: h.battery || h.storage || 0,
+      }));
+    }
+    if (data.online_devices != null) updates.onlineDevices = data.online_devices;
+    if (data.offline_devices != null) updates.offlineDevices = data.offline_devices;
+    if (data.device_mix) {
+      updates.deviceMix = {
+        evPercent: data.device_mix.ev_pct || 0,
+        hvacPercent: data.device_mix.hvac_pct || 0,
+        storagePercent: data.device_mix.battery_pct || 0,
+      };
+    }
+    if (data.device_count != null) {
+      const total = data.online_devices != null && data.offline_devices != null
+        ? data.online_devices + data.offline_devices : data.device_count;
+      if (total > 0 && data.online_devices != null) {
+        updates.assetsReachable = (data.online_devices / total) * 100;
+      }
+    }
+
+    // Analytics
+    if (data.total_energy_saved_kwh != null) updates.energySaved = data.total_energy_saved_kwh;
+    if (data.avg_response_latency_ms != null) updates.latency = data.avg_response_latency_ms;
+    if (data.attack_frequency_data?.length) {
+      updates.attackFrequencyData = data.attack_frequency_data.map((d: any) => ({
+        day: d.day, attacks: d.attacks,
+      }));
+    }
+    if (data.forecast_accuracy_history?.length) {
+      updates.forecastAccuracyHistory = data.forecast_accuracy_history.map((h: any) => ({
+        time: h.time, accuracy: h.accuracy || h.mae || 0,
+      }));
+    }
+
+    // Events
+    if (data.recent_events?.length) {
+      updates.alerts = data.recent_events.map((e: any) => ({
+        id: e.id,
+        time: e.time_display || e.time,
+        type: e.type,
+        severity: e.severity as Alert['severity'],
+        message: e.message,
+        status: e.status as 'active' | 'resolved',
+      }));
+    }
+
+    // Coherence chart data
+    if (data.coherence_history?.length) {
+      updates.coherenceData = data.coherence_history.map((h: any) => ({
+        time: typeof h.time === 'string' ? Date.parse(h.time) || 0 : h.time,
+        value: h.coherence,
+        attack: h.attack ? 1 : 0,
+      }));
+    }
+
+    // Solar history → forecast
+    if (data.solar_history?.length) {
+      updates.solarForecast = data.solar_history.map((s: any) => ({
+        time: s.time,
+        generation: s.actual,
+        shading: s.actual < 40 ? 'high' as const : s.actual < 65 ? 'medium' as const : 'none' as const,
+      }));
+    }
+
+    set(updates);
   },
 
   // ─── DB Sync Actions ──────────────────────────────────────────────────

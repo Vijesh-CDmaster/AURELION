@@ -5,8 +5,11 @@ import { StatusGrid } from "./StatusGrid"
 import { FrequencyChart } from "./FrequencyChart"
 import { EventInjector } from "../simulator/EventInjector"
 import { useGridStore } from "@/lib/grid-store"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Bot, CloudSun, ShieldAlert, Activity, Zap, Heart, AlertTriangle } from "lucide-react"
+import { Bot, CloudSun, ShieldAlert, Activity, Zap, Heart, AlertTriangle, Wifi, WifiOff, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,23 +20,51 @@ export function GridDashboard() {
     status, attackStatus, phaseCoherence, nodesAtRisk, deceptiveSignalInjection,
     forecastAlert, initializeSystemData, tick, frequency, solarGeneration, loadDemand,
     energySaved, latency, activeAgents, agentSyncRate, alerts, dfdt,
-    recoveryEfficiency, avgDetectionTime, forecastAccuracy
+    recoveryEfficiency, avgDetectionTime, forecastAccuracy, updateFromServer, serverConnected
   } = useGridStore()
 
+  // ── WebSocket: stream full grid state from FastAPI ──
+  const { connected } = useWebSocket({
+    channel: 'grid',
+    onMessage: (data) => updateFromServer(data),
+  })
+
+  // ── Claude AI: dashboard summary (refreshes every 30s) ──
+  const { insight: aiSummary, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.dashboardSummary,
+    refreshInterval: 30000,
+  })
+
+  // Fallback: local tick if WebSocket not connected
   React.useEffect(() => {
     initializeSystemData()
   }, [initializeSystemData])
 
   React.useEffect(() => {
-    const interval = setInterval(() => tick(), 2000)
-    return () => clearInterval(interval)
-  }, [tick])
+    if (!connected) {
+      const interval = setInterval(() => tick(), 2000)
+      return () => clearInterval(interval)
+    }
+  }, [tick, connected])
 
   const recentAlerts = alerts.filter(a => a.status === 'active').slice(0, 4)
   const freqDev = Math.abs(50 - frequency)
 
   return (
     <div className="space-y-6">
+      {/* Connection Status Banner */}
+      <div className="flex items-center gap-2 text-xs">
+        {connected ? (
+          <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-400">
+            <Wifi className="h-3 w-3" /> FastAPI Connected
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="gap-1 border-amber-500/30 text-amber-400">
+            <WifiOff className="h-3 w-3" /> Local Simulation
+          </Badge>
+        )}
+      </div>
+
       <StatusGrid />
 
       {/* System Health Cards */}
@@ -131,11 +162,14 @@ export function GridDashboard() {
               <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
                 <Bot className="h-4 w-4 text-accent" />
                 AI Strategy
+                <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={refreshAI} disabled={aiLoading}>
+                  <RefreshCw className={`h-3 w-3 ${aiLoading ? 'animate-spin' : ''}`} />
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-[11px] text-muted-foreground italic leading-relaxed">
-                &quot;System health is currently {status.toUpperCase()}. MARL agents are synchronized ({agentSyncRate.toFixed(1)}%). {attackStatus !== 'none' ? `Adversarial phase alignment detected — coherence at ${(phaseCoherence * 100).toFixed(1)}%.` : `Forecast accuracy at ${forecastAccuracy.toFixed(1)}%.`}&quot;
+                {aiLoading ? 'Analysing grid state…' : aiSummary || `"System health is currently ${status.toUpperCase()}. MARL agents are synchronized (${agentSyncRate.toFixed(1)}%). ${attackStatus !== 'none' ? `Adversarial phase alignment detected — coherence at ${(phaseCoherence * 100).toFixed(1)}%.` : `Forecast accuracy at ${forecastAccuracy.toFixed(1)}%.`}"`}
               </p>
               <Button asChild className="w-full bg-accent text-accent-foreground rounded-lg font-bold text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity" suppressHydrationWarning>
                 <Link href="/assistant">

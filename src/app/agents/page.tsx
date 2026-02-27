@@ -4,7 +4,10 @@ import { useEffect, useState } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Activity, Zap, Search, TrendingUp, Award, ToggleLeft, ToggleRight, Users } from "lucide-react"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
+import { Activity, Zap, Search, TrendingUp, Award, ToggleLeft, ToggleRight, Users, Bot, RefreshCw } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -28,10 +31,15 @@ export default function AgentsPage() {
   const {
     activeAgents, agentClusters, avgAgentResponse, virtualInertia,
     rewardWeightStatus, systemCapacity, agentResponseTimeline,
-    agentSyncRate, initializeSystemData
+    agentSyncRate, initializeSystemData, updateFromServer, tick
   } = useGridStore()
   const [dots, setDots] = useState<{ top: number; left: number; opacity: number; isRed: boolean }[]>([])
   const [manualOverride, setManualOverride] = useState(false)
+
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.agentRecommendation, refreshInterval: 30000,
+  })
 
   useEffect(() => {
     initializeSystemData()
@@ -40,6 +48,7 @@ export default function AgentsPage() {
       opacity: Math.random() * 0.7 + 0.3, isRed: Math.random() > 0.85
     })))
   }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   // Status breakdown for pie chart
   const activeClusters = agentClusters.filter(c => c.status === 'active')
@@ -87,6 +96,22 @@ export default function AgentsPage() {
             <span className="text-xs text-red-400 font-bold uppercase">Manual Override Active — Autonomous MARL decisions are paused. Operator control required.</span>
           </div>
         )}
+
+        {/* AI Coordinator Panel */}
+        <Card className="bg-card border-border bg-accent/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Bot className="h-4 w-4 text-accent" />
+              AI Coordinator
+              <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={refreshAI} disabled={aiLoading}>
+                <RefreshCw className={`h-3 w-3 ${aiLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground italic leading-relaxed">{aiLoading ? 'Analysing cluster states…' : aiInsight || 'Waiting for AI recommendation…'}</p>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card className="bg-card border-border">

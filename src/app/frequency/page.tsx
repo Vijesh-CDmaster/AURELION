@@ -5,7 +5,10 @@ import { Shell } from "@/components/layout/Shell"
 import { FrequencyChart } from "@/components/dashboard/FrequencyChart"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { Activity, ArrowDown, ArrowUp, Download, Gauge, Cpu, MapPin } from "lucide-react"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
+import { Activity, ArrowDown, ArrowUp, Download, Gauge, Cpu, MapPin, Bot, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -24,12 +27,16 @@ import {
 export default function FrequencyMonitorPage() {
   const {
     frequency, status, dfdt, latency, virtualInertia, stabilityZones,
-    frequencyHistory, agentClusters, responseThreshold, initializeSystemData
+    frequencyHistory, agentClusters, responseThreshold, initializeSystemData, updateFromServer, tick
   } = useGridStore()
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.frequencyAnalysis, refreshInterval: 30000,
+  })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   const deviationData = frequencyHistory.slice(-30).map((p) => ({
     time: p.time,
@@ -223,6 +230,22 @@ export default function FrequencyMonitorPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* AI df/dt Analysis Card */}
+        <Card className="bg-card border-border bg-accent/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Bot className="h-4 w-4 text-accent" />
+              AI Frequency Analysis
+              <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={refreshAI} disabled={aiLoading}>
+                <RefreshCw className={`h-3 w-3 ${aiLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground italic leading-relaxed">{aiLoading ? 'Analysing df/dt data…' : aiInsight || 'Waiting for AI analysis…'}</p>
+          </CardContent>
+        </Card>
 
         <Card className="bg-card border-border">
           <CardHeader>

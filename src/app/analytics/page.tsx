@@ -4,11 +4,14 @@ import { useEffect, useState, useCallback } from "react"
 import { Shell } from "@/components/layout/Shell"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useGridStore } from "@/lib/grid-store"
-import { BarChart3, TrendingUp, Download, Calendar, Zap, ShieldCheck, Activity, Target, Brain } from "lucide-react"
+import { BarChart3, TrendingUp, Download, Calendar, Zap, ShieldCheck, Activity, Target, Brain, Bot, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/hooks/use-toast"
+import { useWebSocket } from "@/hooks/useWebSocket"
+import { useAI } from "@/hooks/useAI"
+import { fastapi } from "@/lib/fastapi"
 import {
   Bar,
   BarChart,
@@ -28,14 +31,18 @@ export default function AnalyticsPage() {
   const {
     energySaved, performanceData, latency, avgDetectionTime, falsePositiveRate,
     recoveryEfficiency, attacksMitigated, attackFrequencyData, marlRewardHistory,
-    forecastAccuracyHistory, initializeSystemData
+    forecastAccuracyHistory, initializeSystemData, updateFromServer, tick
   } = useGridStore()
 
   const [timeRange, setTimeRange] = useState("7d")
 
-  useEffect(() => {
-    initializeSystemData()
-  }, [initializeSystemData])
+  const { connected } = useWebSocket({ channel: 'grid', onMessage: (data) => updateFromServer(data) })
+  const { insight: aiInsight, loading: aiLoading, refresh: refreshAI } = useAI({
+    fetcher: fastapi.ai.analyticsSummary, refreshInterval: 30000,
+  })
+
+  useEffect(() => { initializeSystemData() }, [initializeSystemData])
+  useEffect(() => { if (!connected) { const i = setInterval(() => tick(), 2000); return () => clearInterval(i) } }, [tick, connected])
 
   const avgStability = performanceData.length > 0
     ? (performanceData.reduce((s, d) => s + d.stability, 0) / performanceData.length)
@@ -190,10 +197,10 @@ export default function AnalyticsPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={attackFrequencyData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                    <XAxis dataKey="period" tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }} />
+                    <XAxis dataKey="day" tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }} />
                     <YAxis tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }} />
                     <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', fontSize: '10px' }} />
-                    <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                    <Bar dataKey="attacks" radius={[3, 3, 0, 0]}>
                       {attackFrequencyData.map((_, i) => (
                         <Cell key={i} fill={i === attackFrequencyData.length - 1 ? 'hsl(var(--destructive))' : 'hsl(var(--muted-foreground) / 0.5)'} />
                       ))}
@@ -216,7 +223,7 @@ export default function AnalyticsPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={marlRewardHistory}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                    <XAxis dataKey="epoch" tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }} />
+                    <XAxis dataKey="episode" tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }} />
                     <YAxis tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }} />
                     <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', fontSize: '10px' }} />
                     <Area type="monotone" dataKey="reward" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.1} strokeWidth={2} />
@@ -248,6 +255,24 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* AI Analytics Summary */}
+        <Card className="bg-card border-border border-primary/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              AI Analytics Summary
+            </CardTitle>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refreshAI} disabled={aiLoading} suppressHydrationWarning>
+              <RefreshCw className={`h-3.5 w-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-line">
+              {aiLoading ? 'Generating comprehensive analytics report...' : aiInsight || 'Connect to backend for AI-powered analytics insights.'}
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Defense Metrics Summary */}
         <Card className="bg-card border-border">

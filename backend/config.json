@@ -1,0 +1,26 @@
+{
+  "frequency": {
+    "warning_threshold": 49.8,
+    "critical_threshold": 49.5,
+    "normal_band": [49.8, 50.2]
+  },
+  "attack": {
+    "coherence_trigger": 2.0,
+    "sensitivity": "medium"
+  },
+  "forecast": {
+    "uncertainty_escalation_pct": 15.0,
+    "horizon_seconds": 30
+  },
+  "system": {
+    "mode": "simulation",
+    "tick_interval_ms": 1000
+  },
+  "marl": {
+    "learning_rate": 0.001,
+    "discount_factor": 0.95,
+    "stability_weight": 0.5,
+    "comfort_weight": 0.3,
+    "efficiency_weight": 0.2
+  }
+}
