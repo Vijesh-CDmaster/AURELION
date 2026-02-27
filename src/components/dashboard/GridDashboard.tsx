@@ -3,6 +3,7 @@
 import * as React from "react"
 import { StatusGrid } from "./StatusGrid"
 import { FrequencyChart } from "./FrequencyChart"
+import { DropPredictionCard } from "./DropPredictionCard"
 import { EventInjector } from "../simulator/EventInjector"
 import { useGridStore } from "@/lib/grid-store"
 import { useWebSocket } from "@/hooks/useWebSocket"
@@ -126,7 +127,10 @@ export function GridDashboard() {
         <div className="lg:col-span-1">
           <EventInjector />
         </div>
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
+          <DropPredictionCard />
+        </div>
+        <div className="lg:col-span-1">
           <Card className="bg-card border-border shadow-md h-full">
             <CardHeader>
               <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">

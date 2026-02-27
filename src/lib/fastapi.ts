@@ -123,6 +123,12 @@ export const fastapi = {
     explainEvent: (eventId: string) =>
       fastapi.post<AiResponse>('/api/ai/explain-event', { event_id: eventId }),
   },
+
+  // ML Prediction
+  prediction: {
+    drop: () => fastapi.get<DropPredictionResponse>('/api/prediction/drop'),
+    weather: () => fastapi.get('/api/prediction/weather'),
+  },
 };
 
 // ── Response types ──────────────────────────────────────────────────
@@ -151,6 +157,16 @@ export interface FreqLive {
 
 export interface AiResponse {
   insight: string;
+}
+
+export interface DropPredictionResponse {
+  prediction: number;       // 0 = no drop, 1 = drop expected
+  drop_probability: number; // 0.0 to 1.0
+  risk_level: 'low' | 'medium' | 'high' | 'critical' | 'unknown';
+  features?: Record<string, number>;
+  weather?: Record<string, number>;
+  power_history_last6?: number[];
+  error?: string;
 }
 
 export const WS_BASE = process.env.NEXT_PUBLIC_FASTAPI_WS_URL || 'ws://localhost:8000';

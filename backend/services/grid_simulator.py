@@ -190,6 +190,20 @@ class GridSimulator:
         self.simulation_sentinel: deque = deque(maxlen=300)
         self.simulation_history: deque = deque(maxlen=50)
 
+        # ━━ Weather (simulated — feeds into ML drop predictor) ━━━━
+        self.weather: Dict[str, float] = {
+            "temperature": round(random.uniform(15, 35), 1),
+            "humidity": round(random.uniform(30, 80), 1),
+            "cloud_cover": round(random.uniform(0, 60), 1),
+            "shortwave_radiation": round(random.uniform(200, 800), 1),
+            "wind_speed": round(random.uniform(1, 15), 1),
+            "wind_gust": round(random.uniform(3, 25), 1),
+            "wind_direction_deg": round(random.uniform(0, 360), 1),
+        }
+        self.power_history: deque = deque(maxlen=50)  # recent solar power readings
+        for _ in range(5):
+            self.power_history.append(round(random.uniform(1500, 4000), 1))
+
         # ━━ Auth ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         self.users: Dict[str, Dict] = {
             "admin": {"password": "admin123", "role": "admin", "name": "Administrator"},
@@ -242,6 +256,7 @@ class GridSimulator:
         self._update_vpp()
         self._update_devices()
         self._update_analytics()
+        self._update_weather()
         if self.simulation_running:
             self._update_simulation()
 
@@ -832,6 +847,13 @@ class GridSimulator:
 
     # ── Subset snapshots for specific WebSocket channels ──────────────
 
+    def get_weather_snapshot(self) -> Dict:
+        return {
+            "weather": dict(self.weather),
+            "power_history": list(self.power_history),
+            "timestamp": _ts(),
+        }
+
     def get_frequency_snapshot(self) -> Dict:
         return {
             "hz": round(self.frequency, 3),
@@ -862,6 +884,36 @@ class GridSimulator:
         }
 
     # ── Async runner ──────────────────────────────────────────────────
+
+    # ────────── Weather (simulated) ────────────────────────────────
+
+    def _update_weather(self) -> None:
+        """Drift simulated weather values each tick for ML model input."""
+        w = self.weather
+        w["temperature"] = round(_clamp(w["temperature"] + random.gauss(0, 0.3), -5, 45), 1)
+        w["humidity"] = round(_clamp(w["humidity"] + random.gauss(0, 1), 10, 100), 1)
+
+        # Cloud cover linked to solar irradiance events
+        if self.cloud_event_active:
+            w["cloud_cover"] = round(_clamp(w["cloud_cover"] + random.uniform(1, 3), 0, 100), 1)
+        else:
+            w["cloud_cover"] = round(_clamp(w["cloud_cover"] + random.gauss(0, 1.5), 0, 100), 1)
+
+        # Shortwave radiation inversely related to cloud cover
+        clear_sky_rad = 800 - (w["cloud_cover"] / 100) * 600
+        w["shortwave_radiation"] = round(
+            _clamp(clear_sky_rad + random.gauss(0, 20), 20, 900), 1
+        )
+        w["wind_speed"] = round(_clamp(w["wind_speed"] + random.gauss(0, 0.3), 0, 30), 1)
+        w["wind_gust"] = round(
+            _clamp(w["wind_speed"] + random.uniform(1, 8), w["wind_speed"], 40), 1
+        )
+        w["wind_direction_deg"] = round((w["wind_direction_deg"] + random.gauss(0, 3)) % 360, 1)
+
+        # Track solar power as a derived metric
+        # power ≈ solar_irradiance * scaling factor + noise
+        solar_power = self.solar_irradiance * 40 + random.gauss(0, 50)
+        self.power_history.append(round(max(0, solar_power), 1))
 
     async def run(self) -> None:
         """Background tick loop — call from FastAPI lifespan."""

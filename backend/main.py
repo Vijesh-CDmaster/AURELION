@@ -30,6 +30,7 @@ from .routers import (
     auth,
     ai_insights,
     stats,
+    prediction,
 )
 
 # ──────────────────────────────────────────────────────────────────────
@@ -85,6 +86,7 @@ app.include_router(events.router)
 app.include_router(auth.router)
 app.include_router(ai_insights.router)
 app.include_router(stats.router)
+app.include_router(prediction.router)
 
 # ──────────────────────────────────────────────────────────────────────
 # WebSocket management
